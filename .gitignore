@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+
+# Local data — journals are private and stay on the user's machine
+data/journal.json
+data/chat.json
+data/insights.json
+data/spotify.json
+data/*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+
+# SSH agent artifacts
+eval*
+
+# Coverage
+htmlcov/
+.coverage
