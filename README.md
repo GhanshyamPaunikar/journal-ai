@@ -20,11 +20,15 @@ Journaling is powerful when someone reads what you write—finds patterns, notic
 ### 📝 Write — Distraction-free with instant AI analysis
 Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The system learns your patterns in real-time.
 
+![Write](docs/Entries.png)
+
 ### 💬 Chat with Your Journal — Multi-turn reasoning with live steps
 - Ask complex questions: *"What triggers my anxiety?"*, *"How have I been contradicting myself?"*
 - Choose a **personality** (calm therapist, honest coach, analytical observer) 
 - Watch the AI think in real-time: see it planning → searching memory → drafting your answer
 - Get **citations** to specific entries that back up every claim
+
+![Chat](docs/Chat.png)
 
 ### 🧠 Four Deep Insight Cards
 - **Contradictions**: Where you say one thing but consistently do another (with evidence)
@@ -32,11 +36,15 @@ Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The
 - **Wellbeing**: Burnout trends + emotional spirals with warning signs
 - **Identity & Narrative**: Your core values, tensions, and how your arc is changing over time
 
+![Insights](docs/Insights.png)
+
 ### 🕸️ Memory Graph Visualization
 - See your entries as an interactive force-directed graph (mind map)
 - Nodes show emotion, themes, and how many other entries they connect to
 - Drag, hover, zoom — explore your mental landscape visually
 - Edges show which entries share similar themes/emotions
+
+![Memory Graph](docs/Memorygraph.png)
 
 ### 🔐 Crisis Detection
 - Two-stage system: keyword-based initial screening + LLM semantic understanding
@@ -53,6 +61,8 @@ Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The
 - Connect your Spotify account (OAuth, zero secrets stored)
 - See correlations between what you listen to and your moods
 - AI interprets the patterns in plain English
+
+![Spotify](docs/Spotify.png)
 
 ---
 
