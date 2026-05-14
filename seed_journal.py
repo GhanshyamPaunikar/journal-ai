@@ -1,269 +1,198 @@
 #!/usr/bin/env python3
 """
-seed_journal.py — Generate 40-day test journal for Reflect
+seed_journal.py — 40-day fake journal for Reflect
 
-Run: python3 seed_journal.py
-This creates a sample journal with 40 diverse entries for testing.
+Writes directly to data/journal.json with analysis pre-filled (valid emotions,
+intensities, tags, themes) so we don't have to wait on llama3.2:3b for 40
+entries. Embeddings are left empty — the backend lazy-backfills them on the
+first chat request, up to BACKFILL_BUDGET_PER_CALL per request.
+
+Designed to give every panel something interesting:
+  - mood line: visible dips and recoveries
+  - heatmap: most days filled, some gaps
+  - emotions: a mix that's neither all-positive nor all-negative
+  - contradictions: stated "I will run" / "I will set boundaries" then doesn't
+  - triggers: 'work', 'sleep', 'mom' show up with consistent mood deltas
+  - wellbeing: mid-window slump then recovery
+  - narrative: clear arcs (career stretch, fitness restart, family ties)
 """
 
 import json
 import os
+import uuid
 from datetime import datetime, timedelta
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+DATA_DIR = os.environ.get(
+    "REFLECT_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
+)
 os.makedirs(DATA_DIR, exist_ok=True)
 JOURNAL_FILE = os.path.join(DATA_DIR, "journal.json")
 
-entries = [
-    {
-        "id": "4f10ab1f-8e3f-40b0-80d2-866d5068f803",
-        "title": "Long Monday",
-        "text": "Slack didn't stop pinging until 9pm. I closed the laptop and just stared at the ceiling for a while. Skipped dinner. Ate cereal at 10:30. The standup tomorrow is going to be brutal.",
-        "emotion": "tired",
-        "intensity": 7,
-        "tags": ["work", "deadlines", "stress"],
-        "themes": ["overwhelm", "avoidance"],
-        "timestamp": "2026-03-21T21:30:00"
-    },
-    {
-        "id": "d7426ce7-0ef2-427f-ba2b-f4bf4abbce6f",
-        "title": "Couldn't sleep",
-        "text": "Lay awake until 2am running through tomorrow's standup in my head. Imagined every way it could go wrong. Got out of bed and made tea, scrolled Twitter for half an hour.",
-        "emotion": "anxious",
-        "intensity": 8,
-        "tags": ["sleep", "anxiety", "work"],
-        "themes": ["performance anxiety", "body vs mind"],
-        "timestamp": "2026-03-22T21:30:00"
-    },
-    {
-        "id": "4dea5457-807f-41f9-baa0-c154caf82cd9",
-        "title": "Shipped the thing",
-        "text": "Standup went fine. Migration draft was decent. Rajiv said 'good start' which from him is glowing praise. So why do I feel hollow? Closed my laptop at 7 and just sat at my desk.",
-        "emotion": "neutral",
-        "intensity": 5,
-        "tags": ["work", "achievement"],
-        "themes": ["productivity vs meaning"],
-        "timestamp": "2026-03-24T21:30:00"
-    },
-    {
-        "id": "bf3dc05e-2a96-4102-b952-ea4e25e30ce6",
-        "title": "Snapped at Kabir",
-        "text": "Kabir texted asking if I wanted to play badminton tomorrow. I said something passive-aggressive about not having time. He just said 'okay'. He didn't deserve that. I know exactly why I did it.",
-        "emotion": "angry",
-        "intensity": 7,
-        "tags": ["friendship", "jealousy"],
-        "themes": ["misplaced anger", "envy"],
-        "timestamp": "2026-03-26T21:30:00"
-    },
-    {
-        "id": "261b813e-7994-4ba9-9138-d9912091ddb5",
-        "title": "Three minutes of meditation",
-        "text": "Downloaded a meditation app. Tried the 10-minute beginner session. Made it through three minutes before opening my eyes to check the timer. Closed the app. Felt vaguely embarrassed about quitting.",
-        "emotion": "frustrated",
-        "intensity": 5,
-        "tags": ["meditation", "quitting"],
-        "themes": ["low frustration tolerance"],
-        "timestamp": "2026-03-27T21:30:00"
-    },
-    {
-        "id": "ce69925a-d885-4e75-b6de-2c2c4ca4b506",
-        "title": "The meeting that drained me",
-        "text": "Had a two-hour call that could have been an email. I said something in the meeting that I instantly regretted — not mean, just poorly worded — and I've been replaying it all evening.",
-        "emotion": "anxious",
-        "intensity": 7,
-        "tags": ["work", "anxiety", "overthinking"],
-        "themes": ["self-criticism", "rumination"],
-        "timestamp": "2026-03-31T21:30:00"
-    },
-    {
-        "id": "f965efab-e6d1-4661-bc33-5c358ec982a8",
-        "title": "New month, fresh start",
-        "text": "Decided to start journaling again. I keep saying I will and then I don't. Today felt like a good day to actually begin. Work has been exhausting.",
-        "emotion": "hopeful",
-        "intensity": 6,
-        "tags": ["work", "stress", "mindfulness"],
-        "themes": ["new beginnings", "work-life balance"],
-        "timestamp": "2026-04-02T21:30:00"
-    },
-    {
-        "id": "c6904a95-06f5-470c-bbe2-ced1832f51be",
-        "title": "Sunday anxiety creeping in",
-        "text": "The week ahead looks brutal. Three deadlines, a presentation I haven't started, and I promised myself I'd finish the backend feature by Wednesday.",
-        "emotion": "anxious",
-        "intensity": 8,
-        "tags": ["anxiety", "work", "productivity"],
-        "themes": ["Sunday dread", "planning anxiety"],
-        "timestamp": "2026-04-02T21:30:00"
-    },
-    {
-        "id": "d1fe6c6c-075c-4973-96e0-d8741f7eb10a",
-        "title": "Smashed the presentation",
-        "text": "I was nervous going in but it actually went really well. The CTO asked a follow-up question that I could answer confidently. Priya said 'that was impressive' after and I didn't know what to do with that compliment.",
-        "emotion": "proud",
-        "intensity": 8,
-        "tags": ["work", "achievement", "confidence"],
-        "themes": ["owning success", "confidence"],
-        "timestamp": "2026-04-03T21:30:00"
-    },
-    {
-        "id": "ce69925a-d885-4e75-b6de-2c2c4ca4b500",
-        "title": "Good run, clearer head",
-        "text": "Went for a run in the morning for the first time in two weeks. My lungs hated me for the first kilometer. By the third I was actually enjoying it. There's something about running that quiets the noise.",
-        "emotion": "energetic",
-        "intensity": 7,
-        "tags": ["exercise", "focus", "routine"],
-        "themes": ["physical health", "momentum"],
-        "timestamp": "2026-04-05T21:30:00"
-    },
-    {
-        "id": "32ab9df5-a008-4937-8308-9b724465e64c",
-        "title": "Three weeks in — reflecting",
-        "text": "Three weeks since I started journaling. I've missed a few days but mostly kept it up. I notice I feel slightly less chaotic when I write. Like I've put things somewhere they don't keep rattling around.",
-        "emotion": "reflective",
-        "intensity": 5,
-        "tags": ["journaling", "reflection", "growth"],
-        "themes": ["self-awareness"],
-        "timestamp": "2026-04-08T21:30:00"
-    },
-    {
-        "id": "8c940a47-ba1d-4ad9-a6ac-09a6388d4cce",
-        "title": "A really good book evening",
-        "text": "Did nothing useful tonight and it was perfect. Read for two hours straight, made popcorn, didn't open my laptop. The book is about a man who walks across India — something about it feels very grounding.",
-        "emotion": "content",
-        "intensity": 6,
-        "tags": ["reading", "rest", "leisure"],
-        "themes": ["rest without guilt", "simple pleasures"],
-        "timestamp": "2026-04-10T21:30:00"
-    },
-    {
-        "id": "45ab15f8-7d26-4411-a293-33823e1e0ccf",
-        "title": "The burnout conversation",
-        "text": "My tech lead mentioned I looked tired. I said I was fine. Then at lunch he asked again and I actually told him — I've been running at 110% for three months and I'm not sure I can keep the pace.",
-        "emotion": "vulnerable",
-        "intensity": 7,
-        "tags": ["burnout", "work", "vulnerability"],
-        "themes": ["asking for help", "workplace honesty"],
-        "timestamp": "2026-04-09T21:30:00"
-    },
-    {
-        "id": "5f3ee3a3-2c3f-4dff-9e17-0af9080a47f1",
-        "title": "Hard feedback",
-        "text": "Got feedback on my code in the PR review that stung. Not because it was harsh — it was actually fair — but because I knew the issues were there and submitted anyway.",
-        "emotion": "humbled",
-        "intensity": 6,
-        "tags": ["work", "feedback", "coding"],
-        "themes": ["ego and learning"],
-        "timestamp": "2026-04-13T21:30:00"
-    },
-    {
-        "id": "655ed1b6-69d0-4088-86e9-e4d7218213f1",
-        "title": "Learning something new",
-        "text": "Started a short course on system design. Not because work asked me to — just because I've been feeling behind on the concepts and I want to understand distributed systems properly.",
-        "emotion": "curious",
-        "intensity": 7,
-        "tags": ["learning", "tech", "growth"],
-        "themes": ["self-directed learning", "curiosity"],
-        "timestamp": "2026-04-17T21:30:00"
-    },
-    {
-        "id": "11459aa3-16ce-453a-b4a5-20fd9fff59d1",
-        "title": "Rough day, no reason",
-        "text": "Some days are just grey. Nothing went wrong exactly. Work was normal, nothing bad happened, but I felt a low hum of sadness all day that I couldn't pin to anything.",
-        "emotion": "sad",
-        "intensity": 5,
-        "tags": ["sadness", "mental-health"],
-        "themes": ["unexplained moods"],
-        "timestamp": "2026-04-20T21:30:00"
-    },
-    {
-        "id": "cd0f5bf5-54ed-405a-b6c8-5036162ac815",
-        "title": "Called Amma, felt grounded",
-        "text": "Long call with Amma tonight. She updated me on everyone — who got married, who is expecting, the neighbour's new car. I didn't contribute much but I didn't need to.",
-        "emotion": "nostalgic",
-        "intensity": 6,
-        "tags": ["family", "home", "connection"],
-        "themes": ["family bonds", "belonging"],
-        "timestamp": "2026-04-24T21:30:00"
-    },
-    {
-        "id": "2254cbf0-8a4a-40ff-a0bc-0c6b516cbefa",
-        "title": "Launched the feature",
-        "text": "The backend feature I've been building for three weeks went live today. No bugs in the first few hours, which felt like winning a lottery. My tech lead mentioned it in the team Slack.",
-        "emotion": "proud",
-        "intensity": 9,
-        "tags": ["work", "achievement", "launch"],
-        "themes": ["seeing things through"],
-        "timestamp": "2026-04-25T21:30:00"
-    },
-    {
-        "id": "ba67a6f5-987a-4cf6-9591-e1de1358f7dd",
-        "title": "Tired but in a good way",
-        "text": "Genuinely tired today but not the anxious-depleted kind — the kind where you worked hard and it shows. Did a longer run in the morning, 6k, which is the furthest I've gone.",
-        "emotion": "content",
-        "intensity": 6,
-        "tags": ["exercise", "work", "running"],
-        "themes": ["earned exhaustion", "balance"],
-        "timestamp": "2026-04-26T21:30:00"
-    },
-    {
-        "id": "3579aeb2-1a7e-43f2-88f1-0fdf7fee282b",
-        "title": "Thinking about what I actually want",
-        "text": "Had a quiet evening and ended up thinking about the bigger picture. Five years from now — what does a good life look like? I don't want to optimize purely for career.",
-        "emotion": "reflective",
-        "intensity": 7,
-        "tags": ["reflection", "life", "values"],
-        "themes": ["life design", "values clarity"],
-        "timestamp": "2026-04-27T21:30:00"
-    },
-    {
-        "id": "93b816c2-cde5-4363-91bf-3c67ff5708ee",
-        "title": "The uncomfortable thing I noticed",
-        "text": "I realized today that I apologize a lot. Not for things that are actually my fault — for taking up space. 'Sorry to bother you.' 'Sorry, quick question.'",
-        "emotion": "curious",
-        "intensity": 6,
-        "tags": ["self-awareness", "patterns"],
-        "themes": ["unconscious patterns"],
-        "timestamp": "2026-04-28T21:30:00"
-    },
-    {
-        "id": "6b923158-d8ae-4e83-b0fa-f75805f2b0ef",
-        "title": "Today",
-        "text": "Writing this in the evening. It's been a month of journaling more or less consistently. I don't have a grand conclusion. I just feel slightly more honest with myself than I was thirty days ago.",
-        "emotion": "hopeful",
-        "intensity": 7,
-        "tags": ["reflection", "journaling", "growth"],
-        "themes": ["progress", "self-awareness"],
-        "timestamp": "2026-04-29T21:30:00"
-    },
-    {
-        "id": "23cc7002-25cf-4b17-a796-e83a36aa3587",
-        "title": "Halfway mark — 15 days",
-        "text": "Two weeks in now and I'm noticing patterns. The anxiety spikes on certain days. The energy dips when I skip my morning run. Small things but they add up.",
-        "emotion": "curious",
-        "intensity": 6,
-        "tags": ["reflection", "patterns", "observation"],
-        "themes": ["pattern recognition"],
-        "timestamp": "2026-04-14T21:30:00"
-    },
-    {
-        "id": "b803fbd6-5a38-43ba-a202-afe270446a6f",
-        "title": "One week of goals — check-in",
-        "text": "It's been a week since I wrote those goals. How am I doing? Ran twice — not the 10K training plan I imagined but it's a start. Saved money this week by not ordering food every day.",
-        "emotion": "proud",
-        "intensity": 7,
-        "tags": ["goals", "progress", "habits"],
-        "themes": ["tracking progress", "momentum"],
-        "timestamp": "2026-04-21T21:30:00"
-    }
+# Anchor: "today" in the app context. We space entries backward from here so
+# the heatmap/streak/charts all light up around the present.
+TODAY = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
+
+# Each row: (days_ago, hour, emotion, intensity, tags, themes, title, text)
+# 40 rows. Some days have 2 entries; some days are skipped (so streaks are
+# realistic, not perfect).
+RAW = [
+    (39, 9,  "tired",        7, ["work","deadlines","sleep"], ["overwhelm"],
+     "Long Monday",
+     "Slack didn't stop pinging until 9pm. I closed the laptop and just stared at the ceiling for a while. Skipped dinner. Ate cereal at 10:30. Tomorrow's standup is going to be brutal."),
+    (38, 22, "anxious",       8, ["sleep","anxiety","work"], ["performance anxiety"],
+     "Couldn't sleep",
+     "Lay awake until 2am running through the standup in my head. Imagined every way it could go wrong. Got out of bed and made tea, scrolled Twitter for half an hour. Promised myself I'd start sleeping by 11."),
+    (37, 21, "neutral",       5, ["work","achievement"], ["productivity vs meaning"],
+     "Shipped the thing",
+     "Standup went fine. The migration draft was decent. Rajiv said 'good start' which from him is glowing praise. So why do I feel hollow? Closed my laptop at 7 and just sat at my desk."),
+    (36, 20, "frustrated",    6, ["meditation","quitting"], ["low frustration tolerance"],
+     "Three minutes of meditation",
+     "Downloaded a meditation app. Tried the 10-minute beginner session. Made it through three minutes before checking the timer. Closed the app. Felt vaguely embarrassed. I keep saying I'll build a meditation habit."),
+    (35, 21, "angry",         7, ["friendship","jealousy"], ["misplaced anger"],
+     "Snapped at Kabir",
+     "Kabir texted asking if I wanted to play badminton tomorrow. I said something passive-aggressive about not having time. He just said 'okay'. He didn't deserve that — I know exactly why I did it. He got promoted last week and I didn't."),
+    (34, 22, "anxious",       7, ["work","anxiety","overthinking"], ["rumination","self-criticism"],
+     "The meeting that drained me",
+     "Two-hour call that could have been an email. Said something I instantly regretted — not mean, just clumsy — and I've been replaying it all evening. I told myself I would stop ruminating in the evenings."),
+    (33, 9,  "hopeful",       6, ["health","running","habits"], ["new beginnings"],
+     "New month-ish, fresh start",
+     "Said today I'd start running every morning. Just 3k to begin. I keep saying this. We'll see if I make it past day three this time."),
+    (33, 21, "calm",          6, ["reading","rest"], ["rest without guilt"],
+     "A really good book evening",
+     "Did nothing useful tonight and it was perfect. Read for two hours, made popcorn, didn't open my laptop. Book is about a man who walks across India — something about it feels grounding."),
+    (32, 8,  "tired",         5, ["sleep","running"], ["intention drift"],
+     "Skipped the run",
+     "Alarm went off at 6:30 and I turned it off and slept until 8. Told myself I'd go in the evening. I won't."),
+    (31, 22, "anxious",       8, ["work","deadlines","sleep"], ["Sunday dread"],
+     "Sunday anxiety creeping in",
+     "Week ahead looks brutal. Three deadlines, a presentation I haven't started, and I promised myself I'd finish the backend feature by Wednesday. Stomach already tight."),
+    (30, 21, "proud",         8, ["work","achievement","confidence"], ["owning success"],
+     "Smashed the presentation",
+     "Nervous going in but it went really well. The CTO asked a follow-up I could answer confidently. Priya said 'that was impressive' after and I didn't know what to do with the compliment."),
+    (29, 7,  "happy",         7, ["health","running","habits"], ["momentum"],
+     "Good run, clearer head",
+     "Went for a run for the first time in two weeks. Lungs hated me for the first kilometer. By the third I was actually enjoying it. There's something about running that quiets the noise."),
+    (28, 22, "frustrated",    6, ["work","feedback","coding"], ["ego and learning"],
+     "Hard feedback",
+     "Got feedback on my PR that stung. Not because it was harsh — it was fair — but because I knew the issues were there and submitted anyway. I'd told myself I wouldn't ship lazy code."),
+    (27, 21, "reflective",    5, ["journaling","reflection"], ["self-awareness"],
+     "Two weeks in — noticing patterns",
+     "Two weeks of journaling now and I'm noticing patterns. Anxiety spikes on certain days. Energy dips when I skip my morning run. Small things but they add up."),
+    (26, 9,  "tired",         6, ["sleep","work"], ["pace"],
+     "Tired in a heavy way",
+     "Slept seven hours but it didn't feel like enough. Coffee didn't help. Stared at the IDE for thirty minutes before writing anything useful."),
+    (26, 22, "anxious",       7, ["work","mom","family"], ["pleasing others"],
+     "Mom's call",
+     "Mom called and the conversation slid into 'when are you settling down' within ten minutes. I went quiet. I love her but those calls leave me wired and small."),
+    (25, 21, "lonely",        6, ["friendship","loneliness"], ["distance"],
+     "Friday alone again",
+     "Everyone seems to have plans. I told myself I like Friday nights to myself. I do — but tonight I'd like the option, you know? Just to feel like someone wanted me there."),
+    (24, 11, "content",       6, ["family","home"], ["belonging"],
+     "Called Amma, felt grounded",
+     "Long call with Amma. She updated me on everyone — who got married, who is expecting, the neighbour's new car. I didn't contribute much but I didn't need to. Felt held."),
+    (23, 22, "overwhelmed",   8, ["work","deadlines","sleep"], ["pace","burnout"],
+     "The burnout conversation",
+     "My tech lead asked at lunch if I was okay. I said fine. He asked again and I told him — I've been running at 110% for three months and I'm not sure I can keep the pace. He listened. Said to take Friday off. I probably won't."),
+    (22, 21, "anxious",       7, ["work","sleep"], ["self-criticism"],
+     "Didn't take Friday off",
+     "Worked Friday after all. Told myself I'd 'wrap up just one thing'. Five hours later. So much for boundaries."),
+    (21, 8,  "happy",         8, ["health","running"], ["progress"],
+     "6k for the first time",
+     "Did a longer run this morning, 6k, which is the furthest I've gone. Took an embarrassing photo of my watch screen because nobody else is going to be proud for me, so."),
+    (20, 21, "proud",         9, ["work","achievement","launch"], ["seeing things through"],
+     "Launched the feature",
+     "Backend feature I've been building for three weeks went live. No bugs in the first few hours, which felt like winning a lottery. Tech lead mentioned it in the team Slack."),
+    (19, 22, "tired",         6, ["work","running"], ["earned exhaustion"],
+     "Tired but in a good way",
+     "Genuinely tired today but not the anxious-depleted kind — the kind where you worked hard and it shows. Going to sleep early for once."),
+    (18, 20, "reflective",    7, ["reflection","values","life"], ["life design"],
+     "Thinking about what I actually want",
+     "Quiet evening, ended up thinking about the bigger picture. Five years from now — what does a good life look like? I don't want to optimize purely for career. Don't fully know what else yet."),
+    (17, 21, "reflective",    6, ["self-awareness","patterns"], ["unconscious patterns"],
+     "The uncomfortable thing I noticed",
+     "I apologize a lot. Not for things that are my fault — for taking up space. 'Sorry to bother you.' 'Sorry, quick question.' Going to try to notice this week and stop a few times."),
+    (16, 22, "sad",           5, ["mental-health","sadness"], ["unexplained moods"],
+     "Rough day, no reason",
+     "Some days are grey. Nothing went wrong. Work was normal. But a low hum of sadness all day that I couldn't pin to anything. I keep wanting to explain it and not being able to."),
+    (15, 9,  "anxious",       7, ["work","sleep","deadlines"], ["overcommitting"],
+     "Said yes when I should've said no",
+     "Manager asked if I could pick up a small piece of work for someone else's project. I said yes. There is no small piece of work. I knew that and said yes anyway."),
+    (14, 22, "frustrated",    7, ["sleep","running"], ["intention drift"],
+     "Three runs this week — promised seven",
+     "I told myself, very loudly, that I'd run every morning this week. Ran Monday, Wednesday, Saturday. Better than nothing. Also: not what I said."),
+    (13, 20, "content",       6, ["reading","rest"], ["simple pleasures"],
+     "Quiet weekend",
+     "No plans. No agenda. Read for hours, made a real breakfast, walked to the market. Got nothing 'done'. Feel better than I have in weeks."),
+    (12, 21, "anxious",       6, ["work","mom","family"], ["pleasing others"],
+     "Another loaded call",
+     "Mom called. The 'when are you coming to visit' question. I am visiting in three weeks. She doesn't actually mean now — she means 'are you still mine'. I think."),
+    (11, 22, "tired",         6, ["work","sleep"], ["pace"],
+     "Wednesday energy is gone",
+     "Hit a wall at 4pm. Couldn't think. Tried to push through and just produced bad code. Closed the laptop at 6. Probably should have closed it at 5."),
+    (10, 21, "hopeful",       7, ["learning","tech","growth"], ["self-directed learning"],
+     "Started the system design course",
+     "Took two hours after work to start a system design course. Not because work asked — because I've been feeling behind on the concepts and I want to understand distributed systems properly. Genuinely enjoyed it."),
+    (9,  22, "lonely",        6, ["friendship","loneliness"], ["distance"],
+     "Should've gone to the party",
+     "Said no to a thing tonight because I was tired. Now I'm scrolling Instagram seeing everyone there. The tired wasn't wrong. The no maybe was."),
+    (8,  21, "grateful",      7, ["friendship","gratitude"], ["repair"],
+     "Apologized to Kabir",
+     "Texted Kabir and said sorry for being a dick a few weeks ago. He sent back a meme. That's how he says it's fine. I'm lucky to have him."),
+    (7,  9,  "anxious",       7, ["work","sleep","deadlines"], ["Sunday dread","Sunday dread"],
+     "Sunday again",
+     "It's the same Sunday-night tightness. Week ahead is heavy. Tried to read but kept checking work Slack. Stop checking work Slack on Sundays — I literally wrote that down two weeks ago."),
+    (6,  22, "overwhelmed",   7, ["work","mom"], ["pleasing others","pace"],
+     "Said yes to too many things",
+     "Two new projects landed today. I agreed to both. Then mom texted asking if I'd send money home this month even though I sent extra last month. Said yes to that too. I don't know how to say no."),
+    (5,  22, "frustrated",    6, ["running","sleep"], ["intention drift"],
+     "No run today either",
+     "Three days in a row of skipping the morning run. The reason changes — too tired, too much work, headache — but the pattern doesn't. I notice it though. That's something."),
+    (4,  21, "calm",          7, ["reading","rest","family"], ["belonging"],
+     "Quiet evening with a book",
+     "Read for an hour. Texted my sister. Made dal. Didn't do anything 'productive'. Felt human again."),
+    (3,  9,  "proud",         8, ["work","achievement","feedback"], ["owning success"],
+     "Good review",
+     "Quarterly review went well. My manager called out the launch and the way I handled the cross-team thing. Said 'you've been carrying a lot — let's plan around that next quarter'. Almost cried, didn't, won't."),
+    (2,  21, "hopeful",       7, ["values","reflection","growth"], ["values clarity"],
+     "Maybe I'm getting somewhere",
+     "Re-reading old entries tonight. The me from 35 days ago was anxious about everything. The me now is still anxious — but specifically. I know what I'm anxious about, which feels like progress."),
+    (1,  22, "content",       7, ["reflection","journaling","growth"], ["self-awareness","progress"],
+     "Forty days",
+     "Forty days of mostly writing every day. I don't have a grand conclusion. I feel slightly more honest with myself than I was. The patterns I notice are uncomfortable but useful. That's enough for tonight."),
 ]
 
+
+def _entry_from_row(row):
+    days_ago, hour, emotion, intensity, tags, themes, title, text = row
+    ts = (TODAY - timedelta(days=days_ago)).replace(hour=hour, minute=30)
+    summary = text.split(".")[0][:120] + "."
+    return {
+        "id": str(uuid.uuid4()),
+        "title": title,
+        "text": text,
+        "summary": summary,
+        "emotion": emotion,
+        "intensity": intensity,
+        "tags": tags,
+        "themes": themes,
+        "user_mood": None,
+        "word_count": len(text.split()),
+        "timestamp": ts.isoformat(),
+        # Embedding left null — backend lazy-backfills on first chat.
+    }
+
+
 def seed_journal():
-    """Create sample journal entries."""
-    journal_data = {"entries": entries}
+    entries = [_entry_from_row(r) for r in RAW]
+    # Persist oldest-first (consistent with what /save would produce over time).
+    entries.sort(key=lambda e: e["timestamp"])
     with open(JOURNAL_FILE, "w") as f:
-        json.dump(journal_data, f, indent=2)
+        json.dump(entries, f, indent=2)
     print(f"✓ Seeded {len(entries)} entries")
-    print(f"✓ Date range: {entries[-1]['timestamp'][:10]} to {entries[0]['timestamp'][:10]}")
+    print(f"✓ Range: {entries[0]['timestamp'][:10]} → {entries[-1]['timestamp'][:10]}")
+    print(f"✓ File:  {JOURNAL_FILE}")
+
 
 if __name__ == "__main__":
     seed_journal()

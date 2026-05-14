@@ -76,7 +76,10 @@ app = FastAPI(title="Reflect — AI Journal")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    # Browsers ignore credentials when origin is "*". We never send cookies
+    # to this API anyway — tokens (Spotify) are stored server-side — so
+    # disabling credentials keeps the CORS contract correct.
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -131,6 +134,15 @@ def save_file(path, data):
     with open(tmp, "w") as f:
         json.dump(data, f, indent=2)
     os.replace(tmp, path)
+
+
+def _safe_dt(s):
+    """Parse an ISO timestamp safely. Returns None on bad input —
+    callers use this as a 'do this entry have a usable date?' filter."""
+    try:
+        return datetime.fromisoformat(s)
+    except Exception:
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -286,8 +298,10 @@ JSON:"""
 # ---------------------------------------------------------------------------
 
 def tokenize(text: str) -> List[str]:
-    return [w for w in re.findall(r"[a-zA-Z][a-zA-Z'\-]+", (text or "").lower())
-            if w not in STOPWORDS and len(w) > 2]
+    """Lowercase tokens with stopwords removed. Keeps short emotional anchors
+    like 'ex', 'dad', 'mom' — those are exactly what people search for."""
+    raw = re.findall(r"[a-zA-Z][a-zA-Z'\-]*", (text or "").lower())
+    return [w for w in raw if w not in STOPWORDS and len(w) >= 2]
 
 def score_entry(entry: dict, query_tokens: List[str]) -> float:
     if not query_tokens:
@@ -357,11 +371,64 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
     return dot / (math.sqrt(na) * math.sqrt(nb))
 
 
+# Memory tuning knobs. Pulled out so both retrievers can read them and so a
+# future user-config endpoint can adjust without touching call sites.
+RECENCY_HALF_LIFE_DAYS = 30.0   # cosine score is multiplied by 0.5^(age/HL)
+RECENCY_FLOOR = 0.55            # never decay below this (old but relevant > recent fluff)
+MMR_LAMBDA = 0.7                # 1.0 = pure relevance, 0.0 = pure diversity
+
+
+def _age_days(item: dict) -> float:
+    ts = _safe_dt(item.get("timestamp") or "")
+    if not ts:
+        return 0.0
+    return max(0.0, (datetime.now() - ts).total_seconds() / 86400.0)
+
+
+def _recency_weight(item: dict) -> float:
+    """Soft exponential decay with a floor — recent things win ties, but a
+    relevant 6-month-old entry still beats a vague yesterday entry."""
+    age = _age_days(item)
+    decay = 0.5 ** (age / RECENCY_HALF_LIFE_DAYS)
+    return max(RECENCY_FLOOR, decay)
+
+
+def _mmr_select(scored: List[tuple], k: int,
+                vector_field: str = "embedding") -> List[dict]:
+    """Maximal Marginal Relevance — pick k items balancing relevance against
+    diversity from items already picked. Prevents three near-duplicate days
+    about the same topic dominating the top-k."""
+    if not scored:
+        return []
+    pool = list(scored)
+    picked: List[tuple] = []
+    while pool and len(picked) < k:
+        if not picked:
+            best = max(pool, key=lambda x: x[0])
+        else:
+            def mmr(cand):
+                rel = cand[0]
+                v = cand[1].get(vector_field) or []
+                if not v:
+                    return MMR_LAMBDA * rel  # no embedding → no penalty
+                max_sim = max(
+                    (cosine_similarity(v, p[1].get(vector_field) or []) for p in picked),
+                    default=0.0,
+                )
+                return MMR_LAMBDA * rel - (1.0 - MMR_LAMBDA) * max_sim
+            best = max(pool, key=mmr)
+        picked.append(best)
+        pool.remove(best)
+    return [it for _, it in picked]
+
+
 def retrieve_similar(query: str, items: List[dict], k: int = 5,
-                     embed_field: str = "embedding") -> List[dict]:
-    """Embed the query, score each item by cosine similarity against its
-    stored embedding, return top k. Items missing an embedding are skipped —
-    use backfill_*_embeddings to populate them lazily."""
+                     embed_field: str = "embedding",
+                     apply_recency: bool = True,
+                     diversify: bool = True) -> List[dict]:
+    """Embed the query, score by cosine × recency, return top k with MMR
+    diversification. Items missing an embedding are skipped — use
+    backfill_*_embeddings to populate them lazily."""
     qvec = embed(query)
     if not qvec:
         return []
@@ -371,10 +438,19 @@ def retrieve_similar(query: str, items: List[dict], k: int = 5,
         if not vec:
             continue
         s = cosine_similarity(qvec, vec)
-        if s > 0:
-            scored.append((s, it))
+        if s <= 0:
+            continue
+        if apply_recency:
+            s *= _recency_weight(it)
+        scored.append((s, it))
+    if not scored:
+        return []
     scored.sort(key=lambda x: x[0], reverse=True)
-    return [it for _, it in scored[:k]]
+    # Look at a small over-fetch window for MMR to have room to diversify.
+    head = scored[: max(k * 3, k + 2)]
+    if diversify and len(head) > k:
+        return _mmr_select(head, k, vector_field=embed_field)
+    return [it for _, it in head[:k]]
 
 
 def _entry_embed_text(entry: dict) -> str:
@@ -386,28 +462,104 @@ def _chat_embed_text(turn: dict) -> str:
     return f"{turn.get('user','')}\n{turn.get('ai','')}".strip()
 
 
-def backfill_entry_embeddings(entries: List[dict]) -> bool:
-    """Fill any missing entry embeddings in place. Returns True if anything
-    was added, so the caller knows to persist."""
+# How many missing embeddings to fill in one chat request. Cold-start with
+# 200 entries used to hang the first chat as we synchronously embedded all of
+# them. We now top up at most this many per call — by the third or fourth
+# message everything is filled in.
+BACKFILL_BUDGET_PER_CALL = 12
+
+
+def backfill_entry_embeddings(entries: List[dict],
+                              budget: int = BACKFILL_BUDGET_PER_CALL) -> bool:
+    """Fill missing entry embeddings in place, capped per call. Newest entries
+    are filled first so what the user just wrote is searchable immediately."""
     changed = False
-    for e in entries:
-        if not e.get("embedding"):
-            vec = embed(_entry_embed_text(e))
-            if vec:
-                e["embedding"] = vec
-                changed = True
+    filled = 0
+    pending = sorted(
+        [e for e in entries if not e.get("embedding")],
+        key=lambda e: e.get("timestamp", ""),
+        reverse=True,
+    )
+    for e in pending:
+        if filled >= budget:
+            break
+        vec = embed(_entry_embed_text(e))
+        if vec:
+            e["embedding"] = vec
+            changed = True
+            filled += 1
     return changed
 
 
-def backfill_chat_embeddings(history: List[dict]) -> bool:
+def backfill_chat_embeddings(history: List[dict],
+                             budget: int = BACKFILL_BUDGET_PER_CALL) -> bool:
     changed = False
-    for t in history:
-        if not t.get("embedding"):
-            vec = embed(_chat_embed_text(t))
-            if vec:
-                t["embedding"] = vec
-                changed = True
+    filled = 0
+    pending = sorted(
+        [t for t in history if not t.get("embedding")],
+        key=lambda t: t.get("timestamp", ""),
+        reverse=True,
+    )
+    for t in pending:
+        if filled >= budget:
+            break
+        vec = embed(_chat_embed_text(t))
+        if vec:
+            t["embedding"] = vec
+            changed = True
+            filled += 1
     return changed
+
+
+def _surfaced_insights(query: str) -> List[dict]:
+    """Pull the most relevant items from cached insight engines (contradictions,
+    triggers, wellbeing, narrative). These are *short, structured* facts the
+    chat router can inject so the model can reference what the app already
+    knows about the user instead of re-deriving it on every turn."""
+    cache = load_file(INSIGHTS_FILE, default={})
+    if not isinstance(cache, dict) or not cache:
+        return []
+
+    out: List[dict] = []
+    ql = (query or "").lower()
+
+    # Contradictions — short "stated vs. behavior" facts.
+    for it in (cache.get("contradictions", {}) or {}).get("items", [])[:6]:
+        stated = (it.get("stated") or "").strip()
+        behavior = (it.get("behavior") or "").strip()
+        if stated and behavior:
+            out.append({"kind": "contradiction",
+                        "text": f"Contradiction — said: \"{stated[:120]}\"; did: \"{behavior[:120]}\"."})
+
+    # Triggers — patterns with mood direction.
+    for it in (cache.get("triggers", {}) or {}).get("items", [])[:6]:
+        label = (it.get("label") or "").strip()
+        outcome = (it.get("outcome") or "").strip()
+        if label:
+            tail = f" → {outcome}" if outcome else ""
+            out.append({"kind": "trigger",
+                        "text": f"Trigger ({it.get('direction','?')}): {label}{tail}"})
+
+    # Wellbeing — only mention if the level is above 'ok'.
+    wb = cache.get("wellbeing") or {}
+    for key in ("burnout", "spiral"):
+        sig = wb.get(key) or {}
+        if sig.get("level") and sig["level"] != "ok" and sig.get("summary"):
+            out.append({"kind": f"wellbeing.{key}",
+                        "text": f"Wellbeing/{key} ({sig['level']}): {sig['summary'][:240]}"})
+
+    # Narrative — identity lines + becoming statement.
+    nar = cache.get("narrative") or {}
+    for line in (nar.get("identity_lines") or [])[:3]:
+        out.append({"kind": "identity", "text": f"Identity: {line[:160]}"})
+    if nar.get("becoming"):
+        out.append({"kind": "becoming",
+                    "text": f"Direction: {nar['becoming'][:200]}"})
+
+    # If query is small-talk-ish, keep at most 4 insights to avoid clutter.
+    if len(ql.split()) <= 3:
+        return out[:4]
+    return out[:10]
 
 
 def retrieve_memory(query: str) -> Dict[str, List[dict]]:
@@ -444,9 +596,10 @@ def retrieve_memory(query: str) -> Dict[str, List[dict]]:
 
     top_chat = retrieve_similar(query, history, k=3)
 
-    # Insights are produced by future engines (contradictions, triggers,
-    # narrative). For now this stays empty but the slot exists.
-    insights: List[dict] = []
+    # Pull cached findings from the insight engines (contradictions, triggers,
+    # wellbeing, narrative) so chat replies can reference what the app
+    # already knows about the user instead of re-deriving on every turn.
+    insights = _surfaced_insights(query)
 
     return {"entries": top_entries[:7], "chat": top_chat, "insights": insights}
 
@@ -488,20 +641,13 @@ def build_context(message: str, memory: Dict[str, List[dict]]) -> str:
             block.append("")
         parts.append("\n".join(block).rstrip())
 
-    # Patterns section: future insight engines + active goals (the closest
-    # thing we have today to "things known about the user").
+    # Patterns section: surfaced insights about the user that the
+    # contradictions / triggers / wellbeing / narrative engines have produced.
     pattern_lines: List[str] = []
     for ins in memory.get("insights", []):
         text = ins.get("text") if isinstance(ins, dict) else str(ins)
         if text:
             pattern_lines.append(f"- {text}")
-    try:
-        goals = load_file(GOALS_FILE, default=[])
-        for g in [g for g in goals if not g.get("done")][:5]:
-            cat = (g.get("category") or "goal").upper()
-            pattern_lines.append(f"- [GOAL/{cat}] {g.get('text','')}")
-    except Exception:
-        pass
     if pattern_lines:
         parts.append("=== Known Patterns About User ===\n" + "\n".join(pattern_lines))
 
@@ -623,11 +769,7 @@ def delete_entry(entry_id: str):
 
 
 # ---------------------------------------------------------------------------
-# Chat (RAG with citations)
-# ---------------------------------------------------------------------------
-
-# ---------------------------------------------------------------------------
-# Chat — personalities, modes, safety
+# Chat — personalities, modes, safety (RAG with citations)
 # ---------------------------------------------------------------------------
 
 PERSONALITIES = {
@@ -1485,11 +1627,6 @@ Journal summaries:
     return {"result": call_llama(prompt, temperature=0.6)}
 
 
-def _safe_dt(s):
-    try: return datetime.fromisoformat(s)
-    except Exception: return None
-
-
 @app.get("/reflect/{entry_id}")
 def reflect(entry_id: str):
     entries = load_file(JOURNAL_FILE)
@@ -1559,11 +1696,6 @@ def get_prompt():
         f"- ({e.get('emotion','?')}) {e.get('summary') or e.get('text','')[:120]}"
         for e in recent
     )
-    goals = load_file(GOALS_FILE, default=[])
-    active_goals = [g["text"] for g in goals if not g.get("done")][:3]
-    goals_context = ""
-    if active_goals:
-        goals_context = "\nUser's active goals: " + "; ".join(active_goals) + "."
 
     prompt = f"""You write sharp, personal journal prompts. Based on this person's recent emotional themes,
 write ONE journaling prompt — one sentence, under 22 words.
@@ -1571,7 +1703,7 @@ The prompt should invite honest self-examination, not generic reflection.
 Connect to a specific theme or tension you notice. No preamble. No quotes. Just the prompt.
 
 Recent mood and topics:
-{context}{goals_context}
+{context}
 """
     out = call_llama(prompt, temperature=0.92).strip().strip('"').strip()
     out = out.splitlines()[0] if out else "What are you tolerating right now that you haven't admitted to yourself?"
@@ -1609,191 +1741,9 @@ def export_markdown():
 
 
 # ---------------------------------------------------------------------------
-# Grow — self-improvement & self-reflection endpoints
+# (Grow / goals endpoints were removed — no UI consumed them. If goal-tracking
+# returns, both the data file and the routes should come back together.)
 # ---------------------------------------------------------------------------
-
-GOALS_FILE = os.path.join(DATA_DIR, "goals.json")
-
-
-class GoalCreate(BaseModel):
-    text: str
-
-
-class GoalToggle(BaseModel):
-    done: bool
-
-
-@app.get("/grow/patterns")
-def grow_patterns():
-    entries = load_file(JOURNAL_FILE)
-    if not entries:
-        return {"result": "Start journaling — your growth patterns will surface after a few entries."}
-    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:30]
-    combined = "\n\n".join(
-        f"[{e.get('timestamp','')[:10]}] ({e.get('emotion','?')}) {e.get('text','')[:300]}"
-        for e in recent
-    )
-    goals = load_file(GOALS_FILE, default=[])
-    goals_context = ""
-    if goals:
-        active = [g["text"] for g in goals if not g.get("done")][:3]
-        if active:
-            goals_context = f"\nUser's active goals: {'; '.join(active)}."
-
-    prompt = f"""You are a sharp, empathetic growth coach. Analyze these journal entries for deep patterns.
-Write in second person. Be specific — name real themes, not vague categories.
-Every sentence should feel like it could only apply to this person.{goals_context}
-
-Respond with these four sections (use **bold** headers):
-
-**Strengths in motion** — 2-3 genuine strengths you see them actually using (not just possessing)
-**The growth edge** — the most important area to develop right now, and why it keeps showing up
-**Thinking patterns** — one or two cognitive patterns (e.g., perfectionism, avoidance, rumination, reframing) with a specific example from entries
-**Your next lever** — one concrete, specific action that would compound their growth most right now
-
-Journal entries:
-{combined}
-"""
-    return {"result": call_llama(prompt, temperature=0.65)}
-
-
-@app.get("/grow/wins")
-def grow_wins():
-    entries = load_file(JOURNAL_FILE)
-    if not entries:
-        return {"wins": [], "message": "Write your first entry and your wins will surface here."}
-    cutoff = datetime.now() - timedelta(days=14)
-    recent = [e for e in entries if _safe_dt(e.get("timestamp")) and _safe_dt(e["timestamp"]) >= cutoff]
-    if not recent:
-        recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:10]
-    combined = "\n\n".join(
-        f"[{e.get('timestamp','')[:10]}] {e.get('text','')[:350]}" for e in recent
-    )
-    prompt = f"""Read these journal entries and extract genuine wins — achievements, growth moments,
-acts of courage, emotional regulation, showing up when it was hard, anything they did well.
-Include small wins. Be specific — paraphrase the actual event, don't be vague.
-Return 4-8 bullet points. No preamble, no numbering. Start each with the win itself.
-
-Entries:
-{combined}
-"""
-    raw = call_llama(prompt, temperature=0.6)
-    wins = [w.strip("-•* ").strip() for w in raw.splitlines() if w.strip() and len(w.strip()) > 10][:8]
-    return {"wins": wins}
-
-
-class StepToggle(BaseModel):
-    done: bool
-
-
-def _generate_goal_plan(goal_text: str, journal_context: str = "") -> dict:
-    """Call LLM to generate a structured plan for a goal."""
-    categories = "health, career, learning, relationships, mindset, finance, creativity, productivity, other"
-    context_block = f"\nUser's recent journal context:\n{journal_context}\n" if journal_context else ""
-
-    prompt = f"""You are a personal coach. Create a structured, actionable plan for this goal.
-Return ONLY a compact JSON object — no prose, no markdown fences.{context_block}
-Goal: "{goal_text}"
-
-Schema:
-{{
-  "category": "one of: {categories}",
-  "steps": ["3-5 specific, ordered, actionable steps — each a complete action sentence"],
-  "habits": ["2-4 daily or weekly habits that directly support this goal"],
-  "reflection_prompt": "one thoughtful question (1 sentence) to journal about regarding this goal"
-}}
-
-JSON:"""
-
-    raw = call_llama(prompt, temperature=0.4, timeout=120)
-    data = extract_json(raw) or {}
-
-    steps_raw = data.get("steps") or []
-    habits_raw = data.get("habits") or []
-    steps = [
-        {"id": str(uuid.uuid4()), "text": str(s).strip(), "done": False}
-        for s in steps_raw if str(s).strip()
-    ][:6]
-    habits = [str(h).strip() for h in habits_raw if str(h).strip()][:5]
-    category = str(data.get("category", "other")).lower().strip()
-    if category not in categories.replace(",", "").split():
-        category = "other"
-    reflection = str(data.get("reflection_prompt", "")).strip() or \
-        "What would make real progress on this goal feel like this week?"
-
-    return {"category": category, "steps": steps, "habits": habits, "reflection_prompt": reflection}
-
-
-@app.get("/grow/goals")
-def get_goals():
-    return {"goals": load_file(GOALS_FILE, default=[])}
-
-
-@app.post("/grow/goals")
-def create_goal(body: GoalCreate):
-    goal_text = body.text.strip()[:300]
-    if not goal_text:
-        raise HTTPException(400, "Goal text is required")
-
-    entries = load_file(JOURNAL_FILE)
-    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:5]
-    journal_context = "\n".join(
-        f"- ({e.get('emotion','?')}) {e.get('summary') or e.get('text','')[:120]}"
-        for e in recent
-    )
-
-    plan = _generate_goal_plan(goal_text, journal_context)
-
-    goal = {
-        "id": str(uuid.uuid4()),
-        "text": goal_text,
-        "category": plan["category"],
-        "steps": plan["steps"],
-        "habits": plan["habits"],
-        "reflection_prompt": plan["reflection_prompt"],
-        "done": False,
-        "created": datetime.now().isoformat(),
-    }
-    goals = load_file(GOALS_FILE, default=[])
-    goals.append(goal)
-    save_file(GOALS_FILE, goals)
-    return {"goal": goal}
-
-
-@app.patch("/grow/goals/{goal_id}")
-def update_goal(goal_id: str, body: GoalToggle):
-    goals = load_file(GOALS_FILE, default=[])
-    for g in goals:
-        if g["id"] == goal_id:
-            g["done"] = body.done
-            save_file(GOALS_FILE, goals)
-            return {"goal": g}
-    raise HTTPException(404, "Goal not found")
-
-
-@app.patch("/grow/goals/{goal_id}/steps/{step_id}")
-def toggle_step(goal_id: str, step_id: str, body: StepToggle):
-    goals = load_file(GOALS_FILE, default=[])
-    for g in goals:
-        if g["id"] == goal_id:
-            for s in g.get("steps", []):
-                if s["id"] == step_id:
-                    s["done"] = body.done
-                    done_count = sum(1 for st in g["steps"] if st.get("done"))
-                    if done_count == len(g["steps"]) and g["steps"]:
-                        g["done"] = True
-                    save_file(GOALS_FILE, goals)
-                    return {"goal": g}
-            raise HTTPException(404, "Step not found")
-    raise HTTPException(404, "Goal not found")
-
-
-@app.delete("/grow/goals/{goal_id}")
-def delete_goal(goal_id: str):
-    goals = load_file(GOALS_FILE, default=[])
-    goals = [g for g in goals if g["id"] != goal_id]
-    save_file(GOALS_FILE, goals)
-    return {"status": "deleted"}
 
 
 # ---------------------------------------------------------------------------
@@ -2036,8 +1986,283 @@ def spotify_listening_pattern():
     }
 
 
-def fetch_audio_features(cfg, track_ids: List[str]) -> List[dict]:
+# ---------------------------------------------------------------------------
+# Genre → mood mapping.
+#
+# Spotify deprecated /audio-features for new apps in Nov 2024, so we can't ask
+# them for valence/energy any more. But every artist still ships genre tags,
+# and genres carry pretty consistent mood signatures. Each entry is
+# (valence, energy) on [0,1]² — valence = positivity (sad→happy),
+# energy = intensity (mellow→intense). Tuned by hand from public listener
+# studies; not gospel, but defensible.
+#
+# Match strategy: substring match against the genre string. "lo-fi indie pop"
+# would match the "lo-fi" and "indie" and "pop" entries; we average the hits.
+# ---------------------------------------------------------------------------
+
+GENRE_MOOD = {
+    # high valence, high energy
+    "pop":            (0.78, 0.72),
+    "dance":          (0.80, 0.85),
+    "edm":            (0.72, 0.88),
+    "house":          (0.74, 0.82),
+    "disco":          (0.85, 0.80),
+    "funk":           (0.82, 0.75),
+    "afrobeat":       (0.82, 0.78),
+    "afrobeats":      (0.82, 0.78),
+    "reggaeton":      (0.78, 0.80),
+    "latin":          (0.78, 0.70),
+    "k-pop":          (0.78, 0.78),
+    "j-pop":          (0.72, 0.70),
+    "punjabi":        (0.78, 0.74),
+    "bollywood":      (0.72, 0.68),
+    "filmi":          (0.70, 0.66),
+
+    # high valence, moderate energy
+    "indie pop":      (0.65, 0.55),
+    "synth-pop":      (0.62, 0.62),
+    "soft rock":      (0.55, 0.45),
+    "soul":           (0.58, 0.55),
+    "r&b":            (0.55, 0.55),
+    "neo soul":       (0.55, 0.50),
+    "jazz":           (0.50, 0.40),
+    "bossa nova":     (0.65, 0.40),
+
+    # moderate
+    "rock":           (0.55, 0.72),
+    "alternative":    (0.45, 0.65),
+    "alt rock":       (0.45, 0.65),
+    "alternative rock":(0.45, 0.65),
+    "garage":         (0.50, 0.78),
+    "blues":          (0.40, 0.55),
+    "country":        (0.55, 0.55),
+    "folk":           (0.50, 0.40),
+
+    # low valence, high energy
+    "metal":          (0.35, 0.90),
+    "punk":           (0.40, 0.85),
+    "hardcore":       (0.30, 0.92),
+    "trap":           (0.45, 0.78),
+    "drill":          (0.30, 0.82),
+    "hip hop":        (0.50, 0.70),
+    "hip-hop":        (0.50, 0.70),
+    "rap":            (0.50, 0.72),
+    "grunge":         (0.30, 0.72),
+
+    # low valence, low energy
+    "sad":            (0.20, 0.30),
+    "lo-fi":          (0.45, 0.30),
+    "lofi":           (0.45, 0.30),
+    "chillhop":       (0.50, 0.35),
+    "indie folk":     (0.45, 0.35),
+    "singer-songwriter":(0.40, 0.40),
+    "shoegaze":       (0.35, 0.55),
+    "dream pop":      (0.50, 0.40),
+    "ambient":        (0.50, 0.20),
+    "classical":      (0.55, 0.35),
+    "piano":          (0.55, 0.30),
+    "neoclassical":   (0.50, 0.30),
+    "post-rock":      (0.40, 0.60),
+    "emo":            (0.30, 0.65),
+
+    # textural / catchall
+    "acoustic":       (0.55, 0.35),
+    "chill":          (0.60, 0.35),
+    "indie":          (0.55, 0.55),
+    "instrumental":   (0.55, 0.35),
+    "electronic":     (0.55, 0.65),
+}
+
+
+def _mood_from_genres(genres: List[str]) -> Optional[tuple]:
+    """Average the (valence, energy) hits across a track's genres. Returns
+    None if no genres match the table — caller decides what to do."""
+    if not genres:
+        return None
+    hits = []
+    for g in genres:
+        gl = (g or "").lower()
+        for key, vec in GENRE_MOOD.items():
+            if key in gl:
+                hits.append(vec)
+    if not hits:
+        return None
+    v = sum(h[0] for h in hits) / len(hits)
+    e = sum(h[1] for h in hits) / len(hits)
+    return round(v, 3), round(e, 3)
+
+
+def _mood_quadrant_label(valence: float, energy: float) -> str:
+    """Plain-English label for any (v,e) point. Russell circumplex
+    territory — happy/energetic top-right, sad/mellow bottom-left."""
+    v_hi = valence >= 0.55
+    e_hi = energy >= 0.55
+    if v_hi and e_hi:    return "Happy & energetic"
+    if v_hi and not e_hi: return "Calm & content"
+    if not v_hi and e_hi: return "Tense & intense"
+    return "Mellow & melancholic"
+
+
+@app.get("/spotify/genre-mood")
+def spotify_genre_mood():
+    """
+    Replacement for the deprecated /audio-features path.
+
+    Maps each recently-played track to a (valence, energy) point via its
+    artist genres, aggregates per day, returns:
+      - a 30-day time series so the music chart still works
+      - a per-track list so we can plot a 2-D mood scatter
+      - per-day quadrant counts so we can show "what mood you were in"
+      - a single weighted-average point so the user gets a one-glance read
+
+    Returns 200 with `enriched_share` so the UI can warn if our genre table
+    matched too few tracks (e.g. when artists have no genre tags at all).
+    """
+    cfg = spotify_authed()
+    if not cfg:
+        raise HTTPException(401, "Not connected to Spotify")
+
+    # 1) Pull recent plays (50 max from Spotify)
+    recent = spotify_get(cfg, "/me/player/recently-played", {"limit": 50}).get("items", [])
+    if not recent:
+        return {"tracks": [], "points": [], "quadrants": {}, "enriched_share": 0.0}
+
+    # 2) Collect unique artist IDs to fetch genres in bulk
+    artist_ids: List[str] = []
+    seen_artists = set()
+    plays: List[dict] = []
+    for it in recent:
+        tr = it.get("track")
+        if not tr:
+            continue
+        primary_artist = (tr.get("artists") or [{}])[0]
+        aid = primary_artist.get("id")
+        if aid and aid not in seen_artists:
+            seen_artists.add(aid)
+            artist_ids.append(aid)
+        plays.append({
+            "track_id": tr.get("id"),
+            "name": tr.get("name") or "",
+            "artist_id": aid,
+            "artist": ", ".join(a["name"] for a in tr.get("artists", []) if a.get("name")),
+            "image": (tr.get("album", {}).get("images") or [{}])[0].get("url"),
+            "played_at": it.get("played_at"),
+            "duration_ms": tr.get("duration_ms"),
+            "popularity": tr.get("popularity"),
+        })
+
+    # 3) Bulk-fetch genres (Spotify lets us pull up to 50 artists at once)
+    artist_genres: Dict[str, List[str]] = {}
+    for i in range(0, len(artist_ids), 50):
+        batch = artist_ids[i:i + 50]
+        try:
+            data = spotify_get(cfg, "/artists", {"ids": ",".join(batch)})
+        except HTTPException:
+            continue
+        for a in data.get("artists", []) or []:
+            if a and a.get("id"):
+                artist_genres[a["id"]] = a.get("genres") or []
+
+    # 4) Score each track via its primary artist's genres
+    tracks_out: List[dict] = []
+    enriched = 0
+    for p in plays:
+        genres = artist_genres.get(p["artist_id"], [])
+        mood = _mood_from_genres(genres)
+        if mood:
+            v, e = mood
+            enriched += 1
+        else:
+            v = e = None
+        tracks_out.append({
+            "track_id": p["track_id"],
+            "name": p["name"],
+            "artist": p["artist"],
+            "image": p["image"],
+            "played_at": p["played_at"],
+            "genres": genres[:4],
+            "valence": v,
+            "energy": e,
+            "quadrant": _mood_quadrant_label(v, e) if (v is not None and e is not None) else None,
+        })
+
+    enriched_share = round(enriched / len(plays), 3) if plays else 0.0
+
+    # 5) Per-day rollup (30-day window, oldest-first to match other charts)
+    journal = load_file(JOURNAL_FILE)
+    j_by_day: Dict[str, List[float]] = defaultdict(list)
+    for e in journal:
+        ts = _safe_dt(e.get("timestamp"))
+        if not ts:
+            continue
+        if e.get("intensity") is not None:
+            j_by_day[ts.date().isoformat()].append(e["intensity"])
+
+    day_buckets: Dict[str, List[tuple]] = defaultdict(list)
+    for t in tracks_out:
+        if t["valence"] is None or not t["played_at"]:
+            continue
+        d = t["played_at"][:10]
+        day_buckets[d].append((t["valence"], t["energy"]))
+
+    points: List[dict] = []
+    today = date.today()
+    for i in range(29, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        bucket = day_buckets.get(d, [])
+        if bucket:
+            avg_v = round(sum(b[0] for b in bucket) / len(bucket), 3)
+            avg_e = round(sum(b[1] for b in bucket) / len(bucket), 3)
+        else:
+            avg_v = avg_e = None
+        j = j_by_day.get(d, [])
+        points.append({
+            "date": d,
+            "valence": avg_v,
+            "energy": avg_e,
+            "plays": len(bucket),
+            "journal_intensity": round(sum(j) / len(j), 2) if j else None,
+        })
+
+    # 6) Quadrant histogram across the 50 plays
+    quadrants = Counter()
+    for t in tracks_out:
+        if t["quadrant"]:
+            quadrants[t["quadrant"]] += 1
+    quad_total = sum(quadrants.values()) or 1
+
+    # 7) Single centroid for "your music mood right now"
+    val_list = [t["valence"] for t in tracks_out if t["valence"] is not None]
+    en_list = [t["energy"] for t in tracks_out if t["energy"] is not None]
+    centroid = None
+    if val_list:
+        cv = sum(val_list) / len(val_list)
+        ce = sum(en_list) / len(en_list)
+        centroid = {
+            "valence": round(cv, 3),
+            "energy": round(ce, 3),
+            "label": _mood_quadrant_label(cv, ce),
+        }
+
+    return {
+        "tracks": tracks_out,
+        "points": points,
+        "centroid": centroid,
+        "quadrants": [
+            {"label": q, "count": c, "share": round(c / quad_total, 3)}
+            for q, c in quadrants.most_common()
+        ],
+        "enriched_share": enriched_share,
+        "play_count": len(plays),
+        "genre_table_size": len(GENRE_MOOD),
+    }
+
+
+def fetch_audio_features(cfg, track_ids: List[str]) -> tuple:
+    """Return (features, status) where status is 'ok', 'forbidden' (Spotify
+    deprecated /audio-features for new apps in Nov 2024), or 'error'."""
     feats = []
+    status = "ok"
     for i in range(0, len(track_ids), 100):
         batch = track_ids[i:i + 100]
         try:
@@ -2045,16 +2270,42 @@ def fetch_audio_features(cfg, track_ids: List[str]) -> List[dict]:
             for f in data.get("audio_features", []):
                 if f:
                     feats.append(f)
-        except HTTPException:
+        except HTTPException as he:
+            # 401/403/404 typically means the new-app deprecation. Stop trying
+            # — the rest of the batches will fail identically.
+            if he.status_code in (401, 403, 404):
+                status = "forbidden"
+                break
+            status = "error"
             continue
-    return feats
+    if not feats and status == "ok":
+        status = "empty"
+    return feats, status
+
+
+def _proxy_features_from_tracks(played: List[dict]) -> Dict[str, dict]:
+    """Fallback when /audio-features is unavailable. We can't compute real
+    valence/energy without it, but we *can* surface a meaningful 'listening
+    signal' from raw metadata: how heavily someone played each day, when
+    they listened, and how mainstream the music skews. Returns a per-track
+    dict so the aggregator can stay shape-compatible."""
+    out = {}
+    for p in played:
+        pop = p.get("popularity") or 50
+        # Map popularity 0..100 → an "obscurity" score (higher = more niche).
+        obscurity = round(1.0 - pop / 100.0, 3)
+        out[p["id"]] = {"id": p["id"], "popularity": pop, "obscurity": obscurity}
+    return out
 
 
 @app.get("/spotify/mood")
 def spotify_mood():
     """
-    Aggregate audio features for recently-played tracks and correlate the
-    day-by-day listening 'valence/energy' with the day-by-day journal intensity.
+    Aggregate features for recently-played tracks and correlate them with
+    journal mood. When Spotify's /audio-features endpoint is unavailable
+    (deprecated for new apps Nov 2024), we degrade to a 'listening
+    intensity' signal derived from play volume, time-of-day, and popularity
+    — the chart stays meaningful instead of going blank.
     """
     cfg = spotify_authed()
     if not cfg:
@@ -2064,7 +2315,8 @@ def spotify_mood():
     data = spotify_get(cfg, "/me/player/recently-played", {"limit": 50})
     items = data.get("items", [])
     if not items:
-        return {"points": [], "summary": "No recent plays found."}
+        return {"points": [], "summary": "No recent plays found.",
+                "degraded": False, "available_metrics": []}
 
     played = []
     ids = []
@@ -2077,31 +2329,55 @@ def spotify_mood():
             "name": tr["name"],
             "artist": ", ".join(a["name"] for a in tr["artists"]),
             "played_at": it.get("played_at"),
+            "popularity": tr.get("popularity"),
+            "duration_ms": tr.get("duration_ms"),
         })
         ids.append(tr["id"])
 
-    feats = fetch_audio_features(cfg, ids)
+    feats, status = fetch_audio_features(cfg, ids)
+    degraded = status != "ok"
     feat_by_id = {f["id"]: f for f in feats}
+    proxy_by_id = _proxy_features_from_tracks(played) if degraded else {}
+
+    available_metrics = (
+        ["valence", "energy", "danceability", "tempo"]
+        if not degraded else ["plays_per_day", "obscurity", "evening_share"]
+    )
 
     # 2. Aggregate per day
     by_day = defaultdict(list)
+    proxy_by_day = defaultdict(list)
+    plays_by_day = Counter()
+    hour_by_day: Dict[str, List[int]] = defaultdict(list)
     for p in played:
-        f = feat_by_id.get(p["id"])
-        if not f: continue
         d = (p.get("played_at") or "")[:10]
-        if d:
+        if not d:
+            continue
+        plays_by_day[d] += 1
+        # Track listening hour for the day so we can build an "evening share".
+        try:
+            hr = datetime.fromisoformat((p["played_at"] or "").replace("Z", "+00:00")).hour
+            hour_by_day[d].append(hr)
+        except Exception:
+            pass
+        f = feat_by_id.get(p["id"])
+        if f:
             by_day[d].append(f)
+        elif degraded:
+            pr = proxy_by_id.get(p["id"])
+            if pr:
+                proxy_by_day[d].append(pr)
 
     # 3. Journal intensity per day (last 30 days)
     journal = load_file(JOURNAL_FILE)
     j_by_day = defaultdict(list)
     for e in journal:
-        try:
-            d = datetime.fromisoformat(e["timestamp"]).date().isoformat()
-            if e.get("intensity") is not None:
-                j_by_day[d].append(e["intensity"])
-        except Exception:
-            pass
+        ts = _safe_dt(e.get("timestamp"))
+        if not ts:
+            continue
+        d = ts.date().isoformat()
+        if e.get("intensity") is not None:
+            j_by_day[d].append(e["intensity"])
 
     points = []
     today = date.today()
@@ -2115,6 +2391,14 @@ def spotify_mood():
             tempo = round(sum(f["tempo"] for f in day_feats) / len(day_feats), 1)
         else:
             valence = energy = danceability = tempo = None
+
+        # Proxy signal for the degraded mode — meaningful even without features.
+        plays = plays_by_day.get(d, 0)
+        proxies = proxy_by_day.get(d, [])
+        obscurity = round(sum(p["obscurity"] for p in proxies) / len(proxies), 3) if proxies else None
+        hrs = hour_by_day.get(d, [])
+        evening_share = round(sum(1 for h in hrs if h >= 18 or h < 5) / len(hrs), 3) if hrs else None
+
         j_intensities = j_by_day.get(d, [])
         journal_intensity = round(sum(j_intensities) / len(j_intensities), 2) if j_intensities else None
         points.append({
@@ -2123,22 +2407,31 @@ def spotify_mood():
             "energy": energy,
             "danceability": danceability,
             "tempo": tempo,
+            "plays": plays,
+            "obscurity": obscurity,
+            "evening_share": evening_share,
             "journal_intensity": journal_intensity,
-            "play_count": len(day_feats),
+            "play_count": len(day_feats) if day_feats else plays,
         })
 
-    # 4. Overall averages
+    # 4. Overall averages — both real and proxy lines, whichever exist.
     all_val = [p["valence"] for p in points if p["valence"] is not None]
     all_en = [p["energy"] for p in points if p["energy"] is not None]
+    all_obs = [p["obscurity"] for p in points if p["obscurity"] is not None]
     avg_valence = round(sum(all_val) / len(all_val), 3) if all_val else None
     avg_energy = round(sum(all_en) / len(all_en), 3) if all_en else None
+    avg_obscurity = round(sum(all_obs) / len(all_obs), 3) if all_obs else None
 
     return {
         "points": points,
         "avg_valence": avg_valence,
         "avg_energy": avg_energy,
+        "avg_obscurity": avg_obscurity,
         "play_count": len(played),
         "recent": played[:10],
+        "degraded": degraded,
+        "audio_features_status": status,
+        "available_metrics": available_metrics,
     }
 
 
@@ -2149,8 +2442,42 @@ def spotify_insight():
     points = data.get("points", [])
     val = data.get("avg_valence")
     en = data.get("avg_energy")
+    degraded = data.get("degraded")
 
-    # Build a compact textual summary for the LLM
+    if degraded:
+        lines = []
+        for p in points[-14:]:
+            if not (p.get("plays") or p.get("journal_intensity")):
+                continue
+            lines.append(
+                f"- {p['date']}: plays={p.get('plays')}, "
+                f"obscurity={p.get('obscurity')}, "
+                f"evening_share={p.get('evening_share')}, "
+                f"journal_intensity={p.get('journal_intensity')}"
+            )
+        if not lines:
+            return {"insight": "Not enough overlapping data yet. Listen a little and journal a little more.",
+                    "degraded": True}
+        prompt = f"""You are reading a 14-day window of a person's Spotify listening and journal mood.
+Spotify's audio-feature data isn't available for this app, so the signals are:
+- plays: how many tracks they listened to that day (volume)
+- obscurity: 0 = top-40 mainstream, 1 = obscure; high values often track introspective listening
+- evening_share: fraction of plays after 6pm or before 5am (late-night/evening tilt)
+- journal_intensity: self/AI rated emotional intensity (1-10)
+
+Write a short, warm reflection (4-6 sentences) for the user in second person:
+- Note volume changes and what they might mean (heavy days = avoidance? momentum?)
+- Whether obscurity rises on heavier journal days
+- Whether evening listening lines up with harder days
+- One tiny kind observation
+No medical advice. No pathologizing.
+
+Data:
+{chr(10).join(lines)}
+"""
+        return {"insight": call_llama(prompt, temperature=0.5), "degraded": True}
+
+    # Full audio-features path
     lines = []
     for p in points[-14:]:
         if p["valence"] is None and p["journal_intensity"] is None:
@@ -2160,7 +2487,8 @@ def spotify_insight():
             f"plays={p['play_count']}, journal_intensity={p['journal_intensity']}"
         )
     if not lines:
-        return {"insight": "Not enough overlapping data yet. Listen a little and journal a little more."}
+        return {"insight": "Not enough overlapping data yet. Listen a little and journal a little more.",
+                "degraded": False}
 
     prompt = f"""You are analyzing a 14-day window of listening + journal data.
 Valence is Spotify's measure of musical positivity (0=sad, 1=happy).
@@ -2177,7 +2505,7 @@ Data:
 
 Averages: valence={val}, energy={en}.
 """
-    return {"insight": call_llama(prompt, temperature=0.5)}
+    return {"insight": call_llama(prompt, temperature=0.5), "degraded": False}
 
 
 # ---------------------------------------------------------------------------
@@ -2743,8 +3071,7 @@ def _wellbeing_llm_pass(burnout: dict, spiral: dict, entries: List[dict]) -> dic
         "Do NOT diagnose. Do NOT give medical advice. Output strict JSON only."
     )
 
-    prompt = f"""Burnout signal: level={burnout.get('level')} · "
-"avg_mood={burnout.get('avg_mood')} · exhaustion_count={burnout.get('exhaustion_count')}/{burnout.get('entry_count')} · drift={burnout.get('drift')}
+    prompt = f"""Burnout signal: level={burnout.get('level')} · avg_mood={burnout.get('avg_mood')} · exhaustion_count={burnout.get('exhaustion_count')}/{burnout.get('entry_count')} · drift={burnout.get('drift')}
 Recent entries (most recent last):
 {_ev_lines(burnout.get('evidence_ids', []))}
 
@@ -2961,28 +3288,36 @@ def refresh_narrative(window_days: int = 120):
 
 @app.get("/graph")
 def get_graph(limit: int = 250, min_weight: float = 0.18):
-    """Return a memory graph of recent entries.
+    """Return a memory graph of recent entries with named clusters.
 
-    - `limit`: cap on number of nodes (most recent first)
-    - `min_weight`: minimum Jaccard similarity for an edge to be drawn
+    Nodes are entries; edges connect entries that share tags / themes /
+    emotion (Jaccard ≥ `min_weight`). We then run a connected-components
+    pass over the edges to group nodes into clusters, and name each cluster
+    after its most distinctive shared feature.
     """
     entries = load_file(JOURNAL_FILE)
     entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
     entries = entries[:max(10, min(limit, 500))]
 
-    # Feature set per entry: lowercased tags + themes + emotion
+    # Feature set per entry: lowercased tags + themes + emotion (prefixed)
     feats: Dict[str, set] = {}
+    raw_tags: Dict[str, set] = {}      # tags only — used for cluster naming
+    raw_themes: Dict[str, set] = {}    # themes only — preferred for naming
     for e in entries:
-        s = set()
+        s, tg, th = set(), set(), set()
         for t in e.get("tags", []) or []:
             v = (str(t) or "").strip().lower()
-            if v: s.add(v)
+            if v:
+                s.add(v); tg.add(v)
         for t in e.get("themes", []) or []:
             v = (str(t) or "").strip().lower()
-            if v: s.add(v)
+            if v:
+                s.add(v); th.add(v)
         emo = (e.get("emotion") or "").strip().lower()
         if emo: s.add(f"emo:{emo}")
         feats[e["id"]] = s
+        raw_tags[e["id"]] = tg
+        raw_themes[e["id"]] = th
 
     nodes = [
         {
@@ -3017,15 +3352,129 @@ def get_graph(limit: int = 250, min_weight: float = 0.18):
                 "shared": sorted(list(shared))[:5],
             })
 
-    # Per-node degree so the UI can size hubs larger
+    # ---- Cluster detection (connected components via union-find) ----------
+    parent: Dict[str, str] = {nid: nid for nid in ids}
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        rx, ry = find(x), find(y)
+        if rx != ry:
+            parent[rx] = ry
+
+    for ed in edges:
+        union(ed["source"], ed["target"])
+
+    component_of: Dict[str, str] = {nid: find(nid) for nid in ids}
+
+    # Group node ids by component
+    by_component: Dict[str, List[str]] = defaultdict(list)
+    for nid, comp in component_of.items():
+        by_component[comp].append(nid)
+
+    # Singletons (no edges) all live in a synthetic "unconnected" cluster.
+    singletons = [nid for nid, members in by_component.items() if len(members) == 1]
+    if singletons:
+        for nid in singletons:
+            del by_component[nid]
+        by_component["__solo__"] = [nid for nid in singletons]
+
+    # ---- Naming each cluster ---------------------------------------------
+    # Preference order: most-shared theme → most-shared tag → most-shared
+    # emotion. We also pull a count of the top emotion for tinting.
+
+    SKIP_TAGS = {"work", "life", "day", "today", "thing", "stuff"}
+
+    def _label_for(members: List[str]) -> Dict[str, Any]:
+        if len(members) == 1 and members[0] in singletons:
+            return {"name": "Unconnected",
+                    "kind": "solo", "size": len(members),
+                    "top_terms": [], "top_emotion": None}
+        themes = Counter()
+        tags = Counter()
+        emotions = Counter()
+        for nid in members:
+            for t in raw_themes.get(nid, set()):
+                themes[t] += 1
+            for t in raw_tags.get(nid, set()):
+                tags[t] += 1
+        # Pull emotion from the original entries
+        for n in nodes:
+            if n["id"] in members:
+                emotions[n["emotion"]] += 1
+
+        # Themes are phrasal and richer than tags — prefer them when they
+        # actually cover the cluster.
+        coverage_threshold = max(2, len(members) // 3)
+        ranked_themes = [t for t, c in themes.most_common() if c >= coverage_threshold]
+        ranked_tags = [t for t, c in tags.most_common()
+                       if c >= coverage_threshold and t not in SKIP_TAGS]
+
+        if ranked_themes:
+            name = ranked_themes[0].title()
+            kind = "theme"
+            top_terms = ranked_themes[:3]
+        elif ranked_tags:
+            name = "#" + ranked_tags[0]
+            kind = "tag"
+            top_terms = ["#" + t for t in ranked_tags[:3]]
+        else:
+            top_emo = emotions.most_common(1)
+            if top_emo:
+                name = top_emo[0][0].capitalize() + " moments"
+                kind = "emotion"
+                top_terms = [e for e, _ in emotions.most_common(3)]
+            else:
+                name = "Cluster"
+                kind = "other"
+                top_terms = []
+
+        return {
+            "name": name,
+            "kind": kind,
+            "size": len(members),
+            "top_terms": top_terms,
+            "top_emotion": emotions.most_common(1)[0][0] if emotions else None,
+        }
+
+    clusters_out: List[dict] = []
+    cluster_id_for_node: Dict[str, str] = {}
+    for comp_root, members in by_component.items():
+        info = _label_for(members)
+        cid = comp_root[:8] if comp_root != "__solo__" else "solo"
+        # Distinct slug so the UI can colour-key
+        cluster_record = {"id": cid, **info, "members": members}
+        clusters_out.append(cluster_record)
+        for nid in members:
+            cluster_id_for_node[nid] = cid
+
+    # Largest cluster first (excluding the solo bucket, which sinks to the end)
+    clusters_out.sort(key=lambda c: (c["id"] == "solo", -c["size"], c["name"]))
+
+    # Per-node degree + cluster assignment
     deg = Counter()
     for ed in edges:
         deg[ed["source"]] += 1
         deg[ed["target"]] += 1
     for n in nodes:
         n["degree"] = deg.get(n["id"], 0)
+        n["cluster_id"] = cluster_id_for_node.get(n["id"], "solo")
 
-    return {"nodes": nodes, "edges": edges, "node_count": len(nodes), "edge_count": len(edges)}
+    return {
+        "nodes": nodes,
+        "edges": edges,
+        "clusters": [
+            {k: v for k, v in c.items() if k != "members"}
+            for c in clusters_out
+        ],
+        "node_count": len(nodes),
+        "edge_count": len(edges),
+        "cluster_count": sum(1 for c in clusters_out if c["id"] != "solo"),
+    }
 
 
 # ---------------------------------------------------------------------------
