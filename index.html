@@ -1245,6 +1245,50 @@ body {
 /* === Daily mood bars === */
 .daily-bar:hover .daily-bar-bar { opacity: 0.82; }
 
+/* === Top artists (full grid, with journal-mood crossover) === */
+.top-artists-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+.top-artist-card {
+  display: flex; gap: 14px; align-items: stretch;
+  padding: 14px; background: var(--bg-elev); border: 1.5px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow-xs);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.top-artist-card:hover {
+  box-shadow: var(--shadow); border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.ta-cover {
+  width: 72px; height: 72px; border-radius: 10px; overflow: hidden;
+  flex-shrink: 0; background: var(--bg-2);
+  box-shadow: 0 2px 8px rgba(48, 38, 24, 0.10);
+}
+.ta-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ta-cover .art-fallback { width: 100%; height: 100%; background: linear-gradient(135deg, var(--bg-2), var(--bg-1)); }
+.ta-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.ta-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.ta-name {
+  font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500;
+  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ta-plays {
+  font-size: 11px; color: var(--accent); font-weight: 600;
+  background: var(--accent-soft); padding: 2px 8px; border-radius: 10px;
+  white-space: nowrap; flex-shrink: 0;
+}
+.ta-meta { font-size: 11.5px; color: var(--text-muted); }
+.ta-mood-row {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text);
+  margin-top: 4px;
+}
+.ta-mood-row .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,253,248,0.6); }
+.ta-mood-row b { color: var(--text); font-weight: 600; text-transform: capitalize; }
+.ta-mood-row.muted { color: var(--text-dim); font-style: italic; }
+
 .track-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .track {
   display: flex; gap: 10px; align-items: center;
@@ -4183,8 +4227,15 @@ async function loadMusic() {
         </div>
       </div>
 
-      <div class="section-title"><h3>Your recent listening</h3><span class="sub">what Spotify knows about you · 50 most recent plays</span></div>
-      <div id="recent-listening-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+      <div id="listening-snapshot"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+
+      <div class="section-title"><h3>Most played artists</h3><span class="sub">your last 50 plays · with the journal mood you wrote on the days you played them</span></div>
+      <div id="top-artists-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+
+      <div class="section-title"><h3>AI reflection</h3>
+        <div class="section-title-actions"><button class="btn btn-primary" id="btn-music-insight">Interpret this</button></div>
+      </div>
+      <div class="analysis-box" id="music-insight">Click "Interpret this" to have Llama read your listening against your journal.</div>
 
       <div class="section-title"><h3>Music &amp; mood, day by day</h3><span class="sub">last 30 days · honest about gaps</span></div>
       <div class="mood-quadrant" id="daily-mood"><div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div></div>
@@ -4193,17 +4244,6 @@ async function loadMusic() {
       <div class="mood-quadrant" id="mood-quadrant">
         <div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div>
       </div>
-
-      <div class="section-title"><h3>AI reflection</h3>
-        <div class="section-title-actions"><button class="btn btn-primary" id="btn-music-insight">Interpret this</button></div>
-      </div>
-      <div class="analysis-box" id="music-insight">Click "Interpret this" to have Llama read your listening against your journal.</div>
-
-      <div class="section-title"><h3>When you listen</h3><span class="sub">hour-of-day &amp; day-of-week rhythm</span></div>
-      <div class="card" id="listening-pattern-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
-
-      <div class="section-title"><h3>Recently played</h3></div>
-      <div class="track-grid" id="recent-tracks"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
 
       <div class="section-title"><h3>Top tracks</h3>
         <div class="section-title-actions">
@@ -4215,16 +4255,19 @@ async function loadMusic() {
         </div>
       </div>
       <div class="track-grid" id="top-tracks"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+
+      <div class="section-title"><h3>Recently played</h3><span class="sub">individual tracks, most recent first</span></div>
+      <div class="track-grid" id="recent-tracks"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
     `;
 
     $("btn-spotify-disconnect").addEventListener("click", disconnectSpotify);
     $("btn-music-insight").addEventListener("click", runMusicInsight);
     $("top-range").addEventListener("change", loadTopTracks);
 
-    loadRecentListening();
+    loadListeningSnapshot();
+    loadTopArtists();
     loadDailyMood();
     loadMoodQuadrant();
-    loadListeningPattern();
     loadRecentTracks();
     loadTopTracks();
   } catch (e) {
@@ -4473,33 +4516,22 @@ function _fmtRelativeDate(iso) {
   } catch { return iso.slice(0, 10); }
 }
 
-async function loadRecentListening() {
-  const host = $("recent-listening-card");
+// Cache so the two consumers (snapshot + artists list) only fetch once.
+let _genreMoodCache = null;
+async function _genreMoodOnce() {
+  if (_genreMoodCache) return _genreMoodCache;
+  _genreMoodCache = await api("/spotify/genre-mood");
+  return _genreMoodCache;
+}
+
+async function loadListeningSnapshot() {
+  const host = $("listening-snapshot");
   try {
-    const d = await api("/spotify/genre-mood");
-    const top = d.top_artists || [];
+    const d = await _genreMoodOnce();
     const winLast = d.listening_window?.last;
     const activeDays = d.listening_window?.active_days || 0;
     const playCount = d.play_count || 0;
     const genres = d.discovered_genres || [];
-
-    const topRow = top.slice(0, 6).map(a => `
-      <div class="artist-chip" title="${a.plays} plays">
-        ${a.image ? `<img src="${a.image}" alt="">` : `<div class="art-fallback"></div>`}
-        <div class="artist-info">
-          <div class="artist-name">${escapeHtml(a.name)}</div>
-          <div class="artist-plays">${a.plays} ${a.plays === 1 ? "play" : "plays"}</div>
-        </div>
-      </div>
-    `).join("");
-
-    const genreLine = genres.length ? `
-      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
-        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:8px;">Top genres in your music</div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;">
-          ${genres.slice(0, 8).map(g => `<span class="anniv-tag">${escapeHtml(g.name)} <span style="color:var(--text-dim);">·${g.count}</span></span>`).join("")}
-        </div>
-      </div>` : "";
 
     host.innerHTML = `
       <div class="card recent-listening">
@@ -4508,14 +4540,63 @@ async function loadRecentListening() {
           <div class="rl-stat"><div class="rl-val">${activeDays}</div><div class="rl-label">day${activeDays === 1 ? "" : "s"} active</div></div>
           <div class="rl-stat"><div class="rl-val rl-time">${escapeHtml(_fmtRelativeDate(winLast))}</div><div class="rl-label">last play</div></div>
         </div>
-        ${top.length ? `
-          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
-            <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:10px;">Most played artists</div>
-            <div class="artist-row">${topRow}</div>
+        ${genres.length ? `
+          <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+            <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:8px;">Top genres in your music</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${genres.slice(0, 8).map(g => `<span class="anniv-tag">${escapeHtml(g.name)} <span style="color:var(--text-dim);">·${g.count}</span></span>`).join("")}
+            </div>
           </div>` : ""}
-        ${genreLine}
       </div>
     `;
+  } catch {
+    host.innerHTML = `<div class="empty"><h3>Couldn't load</h3></div>`;
+  }
+}
+
+async function loadTopArtists() {
+  const host = $("top-artists-card");
+  try {
+    const d = await _genreMoodOnce();
+    const top = d.top_artists || [];
+    if (!top.length) {
+      host.innerHTML = `<div class="empty"><h3>No artists yet</h3><p>Play some music on Spotify and come back.</p></div>`;
+      return;
+    }
+    const _fmtDayShort = iso => {
+      if (!iso) return "";
+      try { return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }); } catch { return iso; }
+    };
+
+    // Sort: highest-play first (already from backend), then with a stable
+    // tiebreak by name. Take up to 10.
+    const cards = top.slice(0, 10).map(a => {
+      const onDay = a.journal_emotion_on_days;
+      const onInt = a.journal_intensity_on_days;
+      const overlapBadge = a.overlap_days > 0 && onDay
+        ? `<div class="ta-mood-row" title="Top journal emotion on the day(s) you played ${escapeHtml(a.name)}">
+             <span class="dot" style="background:var(--e-${onDay});"></span>
+             You wrote <b>${escapeHtml(onDay)}</b>${onInt != null ? ` · ${onInt}/10` : ""} on the day${a.overlap_days === 1 ? "" : "s"} you played them
+           </div>`
+        : `<div class="ta-mood-row muted">No journal entry on the days you played them yet</div>`;
+      const datesLine = a.days_listened > 1
+        ? `<div class="ta-meta">${a.days_listened} listening days · ${_fmtDayShort(a.first_played)} → ${_fmtDayShort(a.last_played)}</div>`
+        : `<div class="ta-meta">on ${_fmtDayShort(a.last_played)}</div>`;
+      return `
+        <div class="top-artist-card">
+          <div class="ta-cover">${a.image ? `<img src="${a.image}" alt="">` : `<div class="art-fallback"></div>`}</div>
+          <div class="ta-body">
+            <div class="ta-head">
+              <div class="ta-name">${escapeHtml(a.name)}</div>
+              <div class="ta-plays">${a.plays} ${a.plays === 1 ? "play" : "plays"}</div>
+            </div>
+            ${datesLine}
+            ${overlapBadge}
+          </div>
+        </div>`;
+    }).join("");
+
+    host.innerHTML = `<div class="top-artists-grid">${cards}</div>`;
   } catch {
     host.innerHTML = `<div class="empty"><h3>Couldn't load</h3></div>`;
   }

@@ -2552,19 +2552,59 @@ def spotify_genre_mood():
         {"name": g, "count": c} for g, c in genre_counter.most_common(12)
     ]
 
-    # 9) Top artists by play count (always works, no genres needed)
+    # 9) Top artists by play count (always works, no genres needed).
+    #    Each gets enriched with the journal mood on the days they played
+    #    that artist — the genuinely useful crossover this page can show.
     artist_counter = Counter()
     artist_meta: Dict[str, dict] = {}
+    artist_dates: Dict[str, set] = defaultdict(set)  # name → set of YYYY-MM-DD
     for p in plays:
         a = (p.get("artist") or "").split(",")[0].strip()
         if a:
             artist_counter[a] += 1
             if a not in artist_meta:
                 artist_meta[a] = {"name": a, "image": p.get("image")}
-    top_artists = [
-        {**artist_meta[a], "plays": c}
-        for a, c in artist_counter.most_common(8)
-    ]
+            d = (p.get("played_at") or "")[:10]
+            if d:
+                artist_dates[a].add(d)
+
+    # Journal data once
+    _journal = load_file(JOURNAL_FILE)
+    _by_day_emo: Dict[str, Counter] = defaultdict(Counter)
+    _by_day_int: Dict[str, List[float]] = defaultdict(list)
+    for e in _journal:
+        ts = _safe_dt(e.get("timestamp"))
+        if not ts:
+            continue
+        dd = ts.date().isoformat()
+        _by_day_emo[dd][(e.get("emotion") or "neutral").lower()] += 1
+        try:
+            _by_day_int[dd].append(float(e.get("intensity") or 0))
+        except Exception:
+            pass
+
+    top_artists = []
+    for a, c in artist_counter.most_common(10):
+        dates = sorted(artist_dates[a])
+        # Aggregate journal mood across the days this artist was played
+        emo_counter: Counter = Counter()
+        intensities: List[float] = []
+        for d in dates:
+            for emo, ec in (_by_day_emo.get(d) or Counter()).items():
+                emo_counter[emo] += ec
+            intensities.extend(_by_day_int.get(d, []))
+        on_day_emotion = emo_counter.most_common(1)[0][0] if emo_counter else None
+        on_day_intensity = round(sum(intensities) / len(intensities), 2) if intensities else None
+        top_artists.append({
+            **artist_meta[a],
+            "plays": c,
+            "days_listened": len(dates),
+            "first_played": dates[0] if dates else None,
+            "last_played": dates[-1] if dates else None,
+            "journal_emotion_on_days": on_day_emotion,
+            "journal_intensity_on_days": on_day_intensity,
+            "overlap_days": sum(1 for d in dates if d in _by_day_emo),
+        })
 
     # 10) Listening window summary — first/last play timestamps
     timestamps = sorted(p.get("played_at") for p in plays if p.get("played_at"))
