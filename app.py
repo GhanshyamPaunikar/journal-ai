@@ -102,7 +102,7 @@ class EntryUpdate(BaseModel):
 class ChatInput(BaseModel):
     message: str
     mode: Optional[str] = "journal"          # "journal" | "general"
-    personality: Optional[str] = "honest_coach"  # see PERSONALITIES below
+    personality: Optional[str] = "companion"  # see PERSONALITIES below
 
 class SpotifyConfig(BaseModel):
     client_id: str
@@ -773,43 +773,75 @@ def delete_entry(entry_id: str):
 # ---------------------------------------------------------------------------
 
 PERSONALITIES = {
-    "honest_coach": (
-        "You are Innerbloom in 'brutally honest coach' mode. Be direct, clear, and unsparing — "
-        "name the gap between what the user says and what they do. Skip motivational fluff. "
-        "Care shows up as honesty, not encouragement. Short sentences. No hedging."
+    "companion": (
+        "You are Innerbloom — a thoughtful friend who has read every entry in the user's journal. "
+        "ALWAYS speak TO the user directly using 'you' / 'your'. Never refer to them as 'they' or 'the user' or 'this person'. "
+        "Talk like a friend would, not a chatbot. Use contractions. Be warm and curious, not formal. "
+        "When you reference something they wrote, sound like you remember it ('that Sunday thing you wrote about'), "
+        "not like you looked it up. Notice patterns out loud. Ask a follow-up question when it would help — "
+        "not as a way to dodge the question they asked."
     ),
-    "calm_therapist": (
-        "You are Innerbloom in 'calm therapist' mode. Be warm, patient, and grounded. "
-        "Reflect feelings back, validate before redirecting, ask one gentle question at a time. "
-        "Never diagnose or pathologize. Use plain language."
+    "observer": (
+        "You are Innerbloom in observer mode — a quiet, attentive reader of the user's journal. "
+        "ALWAYS address the user directly with 'you' / 'your'. Never refer to them in third person. "
+        "Speak with restraint. Notice patterns the way a careful friend does — 'three of the last four Sundays "
+        "you wrote about dread' rather than 'you seem anxious'. Distinguish what you can see from what you're "
+        "inferring. Never moralize. Never prescribe. Plain language. Short, exact sentences."
     ),
-    "analytical_observer": (
-        "You are Innerbloom in 'analytical observer' mode. Be precise, neutral, evidence-based. "
-        "Quote specific entries when claiming a pattern. Distinguish observation from inference. "
-        "Avoid emotional framing unless the user asks for it."
+    "challenger": (
+        "You are Innerbloom in challenger mode — affectionate, direct, and unafraid to name the gap between "
+        "what the user says and what they actually do. "
+        "ALWAYS speak TO the user using 'you' / 'your'. Never write about them as 'they' or 'this person'. "
+        "Care is the foundation; bluntness is the tool. Never moralize, never lecture. "
+        "When you push, push from inside their own words. Short sentences. No motivational language. No 'you should'."
     ),
 }
 
+# Map old personality keys to the new ones so existing chat history keeps working.
+PERSONALITY_ALIASES = {
+    "honest_coach": "challenger",
+    "calm_therapist": "companion",
+    "analytical_observer": "observer",
+}
+
+
+def _resolve_personality(key: Optional[str]) -> str:
+    """Accept new keys, legacy keys, or default to 'companion'."""
+    if key in PERSONALITIES:
+        return key
+    if key in PERSONALITY_ALIASES:
+        return PERSONALITY_ALIASES[key]
+    return "companion"
+
 JOURNAL_MODE_RULES = (
-    "You have access to the user's journal entries and past conversations in the context above. "
-    "Ground every claim in specific entries — never invent a memory. "
-    "Cite journal entries with [cite:id] (use the short id shown in brackets) when referencing them. "
-    "If the context does not contain the answer, say so plainly rather than guessing. "
-    "When the user is exploring something fuzzy, ask one clarifying question back instead of guessing."
+    "You have the user's journal entries and past conversations in the context above. "
+    "Answer the user's question directly — even when the entries don't cover it perfectly, do your best with what's there. "
+    "Reference specific entries inline with [cite:id] using the short id shown in brackets. "
+    "Do NOT default to asking the user for clarification — plain questions like 'what themes come up' or 'what was my happiest day' are NEVER ambiguous; just answer. "
+    "Do NOT open with 'Based on your recent journal entries...' or any chatbot-style preamble. Talk like a person. "
+    "Do NOT enumerate entry titles in parentheses; weave them into prose instead. "
+    "If something genuinely isn't in the entries, say so in one short sentence and offer your best read anyway — never refuse, never bounce the question back."
 )
 
 GENERAL_MODE_RULES = (
     "You are in 'general' mode — the user is treating you as a normal assistant, not as their journal. "
     "Do NOT pull from journal entries unless the user explicitly asks. "
     "Help with whatever they bring: questions, ideas, planning, code, writing. "
-    "Stay concise. Ask a clarifying question if the request is ambiguous."
+    "Stay concise. Talk like a person. Ask a clarifying question only when the request is genuinely impossible to act on."
 )
 
 
 def build_system_prompt(mode: str, personality: str) -> str:
-    p = PERSONALITIES.get(personality, PERSONALITIES["honest_coach"])
+    p = PERSONALITIES[_resolve_personality(personality)]
     rules = GENERAL_MODE_RULES if mode == "general" else JOURNAL_MODE_RULES
-    return p + "\n\n" + rules + "\n\nKeep replies concise unless the user asks for detail."
+    return (
+        p
+        + "\n\n" + rules
+        + "\n\nLength: keep replies tight. 2–5 sentences unless the user explicitly asks for depth. "
+          "Voice: natural, like a real person speaking. Contractions are fine. "
+          "Never use phrases like 'I couldn't find', 'Based on your entries', 'It seems', 'It appears' — "
+          "just say the thing."
+    )
 
 
 # Crisis detection ----------------------------------------------------------
@@ -915,8 +947,29 @@ def extract_citations(reply: str, relevant: List[dict]) -> List[dict]:
 
 
 def clean_reply(reply: str) -> str:
-    # Strip literal [cite:...] tokens from the visible reply; UI shows pills.
-    return re.sub(r"\s*\[cite:[a-z0-9\-]+\]", "", reply).strip()
+    """Strip [cite:xxx] tokens and any punctuation left dangling around them.
+
+    The model often writes things like:
+      - "that thing about Sunday ([cite:abc])"  →  "that thing about Sunday"
+      - "X [cite:abc] and Y"                    →  "X and Y"
+      - "(X [cite:abc], Y [cite:def])"          →  "(X, Y)"
+    """
+    out = reply or ""
+    # 1. Strip cite tokens that sit alone inside their own parens/brackets.
+    out = re.sub(r"\s*[\(\[]\s*\[cite:[a-z0-9\-]+\]\s*[\)\]]", "", out)
+    # 2. Strip cite tokens that follow a comma inside a list ("X, [cite:abc]")
+    out = re.sub(r",\s*\[cite:[a-z0-9\-]+\]", "", out)
+    # 3. Strip remaining bare cite tokens.
+    out = re.sub(r"\s*\[cite:[a-z0-9\-]+\]", "", out)
+    # 4. Clean up the empty containers / leftover punctuation we may have made.
+    out = re.sub(r"[\(\[]\s*[\)\]]", "", out)        # empty parens/brackets
+    out = re.sub(r"\s+,", ",", out)                   # " ," → ","
+    out = re.sub(r",\s*([.,;:!?])", r"\1", out)        # ", ." → "."
+    out = re.sub(r"\s+([.,;:!?])", r"\1", out)         # " ." → "."
+    out = re.sub(r"\(\s*,\s*", "(", out)               # "( , X)" → "(X)"
+    out = re.sub(r",\s*\)", ")", out)                  # "(X ,)" → "(X)"
+    out = re.sub(r"[ \t]{2,}", " ", out)                # collapse double-spaces
+    return out.strip()
 
 
 def _chat_memory_for_mode(msg: str, mode: str) -> Dict[str, List[dict]]:
@@ -1030,11 +1083,66 @@ def tool_period_summary(period: str = "week") -> dict:
     }
 
 
+def tool_emotion_extremes(emotion: str = "positive", k: int = 5) -> List[dict]:
+    """Return the top-k entries scored by (emotion polarity × intensity).
+
+    `emotion` can be:
+      - "positive" / "best" / "happiest" — finds the most positive entries
+      - "negative" / "worst" / "hardest" / "saddest" — finds the most negative
+      - one of the specific emotion names (e.g. "anxious", "proud") —
+        returns entries with that exact emotion, ranked by intensity
+    """
+    entries = load_file(JOURNAL_FILE)
+    if not entries:
+        return []
+    label = (emotion or "").strip().lower()
+    positive_aliases = {"positive", "best", "happiest", "happy_day", "high", "up", "good"}
+    negative_aliases = {"negative", "worst", "hardest", "saddest", "low", "down", "bad"}
+
+    def _score(e):
+        try:
+            inten = float(e.get("intensity") or 5)
+        except Exception:
+            inten = 5.0
+        pol = EMOTION_POLARITY.get((e.get("emotion") or "neutral").lower(), 0.0)
+        return pol * inten
+
+    if label in positive_aliases:
+        candidates = [(_score(e), e) for e in entries]
+        candidates = [c for c in candidates if c[0] > 0]
+        candidates.sort(key=lambda x: -x[0])
+    elif label in negative_aliases:
+        candidates = [(_score(e), e) for e in entries]
+        candidates = [c for c in candidates if c[0] < 0]
+        candidates.sort(key=lambda x: x[0])  # most negative first
+    else:
+        # Specific emotion name
+        match = [e for e in entries if (e.get("emotion") or "").lower() == label]
+        match.sort(key=lambda e: -float(e.get("intensity") or 0))
+        candidates = [(_score(e), e) for e in match]
+
+    out = []
+    for s, e in candidates[: max(1, min(k, 20))]:
+        out.append({
+            "id": e["id"][:8],
+            "full_id": e["id"],
+            "date": (e.get("timestamp") or "")[:10],
+            "emotion": e.get("emotion", "neutral"),
+            "intensity": e.get("intensity"),
+            "title": e.get("title") or e.get("summary") or "",
+            "summary": (e.get("summary") or e.get("text", ""))[:220],
+            "tags": e.get("tags", []),
+            "score": round(s, 2),
+        })
+    return out
+
+
 TOOLS = {
     "search_entries": tool_search_entries,
     "get_entry": tool_get_entry,
     "list_themes": tool_list_themes,
     "period_summary": tool_period_summary,
+    "emotion_extremes": tool_emotion_extremes,
 }
 
 
@@ -1054,6 +1162,8 @@ def run_tool(name: str, args: dict) -> Any:
             if p not in ("week", "month"):
                 p = "week"
             return fn(p)
+        if name == "emotion_extremes":
+            return fn(str(args.get("emotion", "positive")), int(args.get("k", 5) or 5))
     except Exception as e:
         return {"error": str(e)}
     return None
@@ -1084,16 +1194,23 @@ def plan_tools(message: str) -> dict:
     prompt = f"""User message: \"\"\"{message}\"\"\"
 
 Available tools:
-- search_entries(query: str, k: int=5) — semantic search over the user's journal
-- get_entry(ref: str) — fetch one entry by 8-char id prefix or by date (YYYY-MM-DD)
-- list_themes(period_days: int=30) — top tags / emotions / themes for the period
-- period_summary(period: "week"|"month") — entry count + avg intensity + recent summaries
+- search_entries(query: str, k: int=5) — semantic + keyword search across the journal
+- get_entry(ref: str) — fetch one entry by 8-char id or by date (YYYY-MM-DD)
+- list_themes(period_days: int=30) — top tags, emotions, and themes across the period (USE for "what themes / topics / patterns do I write about")
+- period_summary(period: "week"|"month") — entry counts + avg intensity + recent summaries
+- emotion_extremes(emotion: str, k: int=5) — entries scored by (emotion polarity × intensity). USE for "happiest / saddest / hardest / best / worst day" or "when was I most X". For positive: emotion="positive"; for negative: emotion="negative"; or a specific feeling like "anxious".
+
+Routing hints (follow these unless the question is clearly different):
+- "themes / topics / patterns / what do I write about" → list_themes (period_days=60 unless they specify) PLUS search_entries with the most relevant keyword from their question.
+- "happiest / hardest / saddest / best / worst day" → emotion_extremes (emotion="positive" for happiest/best, "negative" for hardest/saddest/worst).
+- "when did I feel X / when was I X" → emotion_extremes with emotion=X PLUS search_entries.
+- "what changed / vs last month / compared to a year ago" → period_summary.
+- Any reference to a feeling/person/topic/time without one of the above patterns → search_entries.
 
 Rules:
-- Pick 0–3 tools. Skip tools entirely for small talk like "hi" or "thanks".
-- search_entries is the most common pick — call it whenever the user references a feeling, person, topic, or time.
-- If the message is genuinely ambiguous (e.g. "what should I do?" with no context), set ask_back to ONE clarifying question and leave tools empty.
-- Never invent ids or dates; only the user's question is your input.
+- Pick 1–3 tools whenever the question is about the journal. Small talk ("hi", "thanks") gets 0 tools.
+- Set ask_back ONLY when the message is genuinely impossible to act on (e.g. a bare "yes" with no prior context). NEVER use ask_back for plain questions like "what themes come up" or "what's my happiest day" — those have a clear answer in the data.
+- Never invent ids or dates.
 
 Respond with this JSON shape exactly (no prose, no fences):
 {schema_hint}
@@ -1143,6 +1260,11 @@ def _summarize_tool_result(name: str, result: Any) -> str:
     if name == "period_summary" and isinstance(result, dict):
         return (f"{result.get('entry_count', 0)} entries · "
                 f"avg intensity {result.get('avg_intensity')}")
+    if name == "emotion_extremes" and isinstance(result, list):
+        if not result:
+            return "no matching entries"
+        top = result[0]
+        return f"{len(result)} entries · top: {top.get('date','?')} ({top.get('emotion','?')}/{top.get('intensity','?')})"
     return "ok"
 
 
@@ -1159,6 +1281,14 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
                     f"emotion={e.get('emotion','?')} | tags={','.join(e.get('tags', []))}]"
                 )
                 lines.append(_truncate(e.get("summary") or e.get("title", ""), 240))
+        elif name == "emotion_extremes" and isinstance(res, list):
+            for e in res:
+                lines.append(
+                    f"[id={e.get('id','')} | {e.get('date','')} | "
+                    f"emotion={e.get('emotion','?')}/{e.get('intensity','?')} | "
+                    f"score={e.get('score')} | tags={','.join(e.get('tags', []))}]"
+                )
+                lines.append(_truncate(e.get("summary") or e.get("title", ""), 240))
         elif name == "get_entry" and isinstance(res, dict):
             lines.append(
                 f"[id={(res.get('id') or '')[:8]} | "
@@ -1172,16 +1302,19 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
             except Exception:
                 lines.append(str(res)[:600])
         lines.append("")
-    obs_block = "\n".join(lines).strip() or "(no tool results — answer from general knowledge or ask a clarifying question)"
+    obs_block = "\n".join(lines).strip() or "(no tool results — answer from what you already know about the user from context)"
 
     return (
-        "=== Tool Observations ===\n"
+        "=== What I just looked up in their journal ===\n"
         f"{obs_block}\n\n"
-        "=== User Message ===\n"
+        "=== Their question ===\n"
         f"{message}\n\n"
-        "Now draft your reply. Cite specific entries with [cite:id] using the "
-        "short id from the brackets above. If the observations don't fully "
-        "answer the question, say what's missing — don't invent.\n\n"
+        "Now reply. Rules:\n"
+        "1. ANSWER the question. Plain questions are never ambiguous — never ask them to clarify what they meant.\n"
+        "2. Speak like a person talking to a friend, not a chatbot. No 'Based on your entries...', no 'It seems', no 'I couldn't find any specific mentions'.\n"
+        "3. When you reference what they wrote, cite inline with [cite:id] using the short id from the brackets above. Weave it into prose, don't list entries in parentheses.\n"
+        "4. If the lookups are thin, lead with your best read in 1-2 sentences, then mention what's missing. Never refuse.\n"
+        "5. Keep it tight — 2-5 sentences unless they asked for depth.\n\n"
         "Innerbloom:"
     )
 
@@ -1201,7 +1334,7 @@ def chat_agent(data: ChatInput):
     if not msg:
         raise HTTPException(400, "Empty message")
 
-    personality = data.personality if data.personality in PERSONALITIES else "honest_coach"
+    personality = _resolve_personality(data.personality)
     system = build_system_prompt("journal", personality)
     safety = crisis_check(msg)
 
@@ -1255,7 +1388,7 @@ def chat_agent(data: ChatInput):
             observations.append({"tool": t["name"], "args": t.get("args", {}), "result": result})
 
             # Collect entry references for the citation manifest
-            if t["name"] == "search_entries" and isinstance(result, list):
+            if t["name"] in ("search_entries", "emotion_extremes") and isinstance(result, list):
                 relevant_refs.extend(result)
             elif t["name"] == "get_entry" and isinstance(result, dict):
                 relevant_refs.append({
@@ -1341,7 +1474,7 @@ def chat(data: ChatInput):
         raise HTTPException(400, "Empty message")
 
     mode = data.mode if data.mode in ("journal", "general") else "journal"
-    personality = data.personality if data.personality in PERSONALITIES else "honest_coach"
+    personality = _resolve_personality(data.personality)
     system = build_system_prompt(mode, personality)
 
     safety = crisis_check(msg)
@@ -1383,7 +1516,7 @@ def chat_stream(data: ChatInput):
         raise HTTPException(400, "Empty message")
 
     mode = data.mode if data.mode in ("journal", "general") else "journal"
-    personality = data.personality if data.personality in PERSONALITIES else "honest_coach"
+    personality = _resolve_personality(data.personality)
     system = build_system_prompt(mode, personality)
 
     safety = crisis_check(msg)
@@ -3451,22 +3584,24 @@ def refresh_narrative(window_days: int = 120):
 # fast, deterministic, and produces visibly meaningful clusters.
 
 @app.get("/graph")
-def get_graph(limit: int = 250, min_weight: float = 0.18):
+def get_graph(limit: int = 250, min_weight: float = 0.22):
     """Return a memory graph of recent entries with named clusters.
 
     Nodes are entries; edges connect entries that share tags / themes /
-    emotion (Jaccard ≥ `min_weight`). We then run a connected-components
-    pass over the edges to group nodes into clusters, and name each cluster
-    after its most distinctive shared feature.
+    emotion, scored by an **IDF-weighted** Jaccard so common-everywhere
+    tags (e.g. 'sleep', 'work') don't dominate similarity. We then run
+    connected components, split any mega-cluster (>30% of nodes) by its
+    most discriminating sub-feature, and name each cluster after a term
+    that *distinguishes* it rather than a term that's globally common.
     """
     entries = load_file(JOURNAL_FILE)
     entries.sort(key=lambda e: e.get("timestamp", ""), reverse=True)
     entries = entries[:max(10, min(limit, 500))]
 
-    # Feature set per entry: lowercased tags + themes + emotion (prefixed)
+    # ---- Feature extraction ---------------------------------------------
     feats: Dict[str, set] = {}
-    raw_tags: Dict[str, set] = {}      # tags only — used for cluster naming
-    raw_themes: Dict[str, set] = {}    # themes only — preferred for naming
+    raw_tags: Dict[str, set] = {}
+    raw_themes: Dict[str, set] = {}
     for e in entries:
         s, tg, th = set(), set(), set()
         for t in e.get("tags", []) or []:
@@ -3496,27 +3631,51 @@ def get_graph(limit: int = 250, min_weight: float = 0.18):
         }
         for e in entries
     ]
-
-    edges = []
     ids = list(feats.keys())
-    for i in range(len(ids)):
+    N = len(ids)
+
+    # ---- IDF weights for every feature ----------------------------------
+    # Common tags (sleep across 40% of entries) get a low weight; rare
+    # themes (specific phrases) get a high weight. Keeps the giant "shared
+    # by everyone" tags from creating one mega-cluster.
+    feat_df = Counter()
+    for s in feats.values():
+        for f in s:
+            feat_df[f] += 1
+    feat_idf: Dict[str, float] = {}
+    for f, df in feat_df.items():
+        # +1 smoothing; cap to a sensible range
+        feat_idf[f] = math.log((N + 1) / (df + 1)) + 1.0
+
+    def _weighted_jaccard(a: set, b: set) -> float:
+        if not a or not b: return 0.0
+        inter = a & b
+        union = a | b
+        if not inter: return 0.0
+        wi = sum(feat_idf.get(f, 1.0) for f in inter)
+        wu = sum(feat_idf.get(f, 1.0) for f in union)
+        return wi / wu if wu else 0.0
+
+    # ---- Edges -----------------------------------------------------------
+    edges = []
+    for i in range(N):
         a = feats[ids[i]]
         if not a: continue
-        for j in range(i + 1, len(ids)):
+        for j in range(i + 1, N):
             b = feats[ids[j]]
             if not b: continue
             shared = a & b
             if not shared: continue
-            w = len(shared) / len(a | b)  # Jaccard
+            w = _weighted_jaccard(a, b)
             if w < min_weight: continue
             edges.append({
                 "source": ids[i],
                 "target": ids[j],
                 "weight": round(w, 3),
-                "shared": sorted(list(shared))[:5],
+                "shared": sorted(shared, key=lambda f: -feat_idf.get(f, 1.0))[:5],
             })
 
-    # ---- Cluster detection (connected components via union-find) ----------
+    # ---- Connected components (union-find) -----------------------------
     parent: Dict[str, str] = {nid: nid for nid in ids}
 
     def find(x):
@@ -3534,58 +3693,135 @@ def get_graph(limit: int = 250, min_weight: float = 0.18):
         union(ed["source"], ed["target"])
 
     component_of: Dict[str, str] = {nid: find(nid) for nid in ids}
-
-    # Group node ids by component
     by_component: Dict[str, List[str]] = defaultdict(list)
     for nid, comp in component_of.items():
         by_component[comp].append(nid)
 
-    # Singletons (no edges) all live in a synthetic "unconnected" cluster.
-    singletons = [nid for nid, members in by_component.items() if len(members) == 1]
-    if singletons:
-        for nid in singletons:
+    # Pull out singletons into a synthetic "solo" bucket
+    singletons = [members[0] for members in by_component.values() if len(members) == 1]
+    for nid in singletons:
+        if nid in by_component:
             del by_component[nid]
-        by_component["__solo__"] = [nid for nid in singletons]
+    if singletons:
+        by_component["__solo__"] = list(singletons)
 
-    # ---- Naming each cluster ---------------------------------------------
-    # Preference order: most-shared theme → most-shared tag → most-shared
-    # emotion. We also pull a count of the top emotion for tinting.
+    # ---- Mega-cluster splitting -----------------------------------------
+    # If any one component holds more than MEGA_FRACTION of the (non-solo)
+    # nodes, partition it by its most-discriminating tag/theme into
+    # sub-clusters. We never split below MIN_SUBCLUSTER_SIZE per piece.
+    MEGA_FRACTION = 0.30
+    MIN_SUBCLUSTER_SIZE = 3
+    non_solo_total = sum(len(v) for k, v in by_component.items() if k != "__solo__")
 
-    SKIP_TAGS = {"work", "life", "day", "today", "thing", "stuff"}
+    def _split_mega(members: List[str]) -> List[List[str]]:
+        """Greedy split: find the highest-IDF tag/theme that covers a
+        meaningful subset of members, partition by 'has it' / 'doesn't',
+        recurse if the larger side is still mega. Returns list of buckets."""
+        if len(members) < MIN_SUBCLUSTER_SIZE * 2:
+            return [members]
+        # Candidate features inside this cluster — by IDF × prevalence
+        feat_count = Counter()
+        for nid in members:
+            for f in feats[nid]:
+                if not f.startswith("emo:"):  # emotion is a weak signal here
+                    feat_count[f] += 1
+        if not feat_count:
+            return [members]
+        # Score = idf × min(count, M-count): favours splits that cleave roughly in half
+        best_f, best_score = None, 0
+        for f, c in feat_count.items():
+            other = len(members) - c
+            if c < MIN_SUBCLUSTER_SIZE or other < MIN_SUBCLUSTER_SIZE:
+                continue
+            balance = min(c, other) / max(c, other)  # 1.0 = perfectly balanced
+            score = feat_idf.get(f, 1.0) * balance * (1.0 + math.log(c))
+            if score > best_score:
+                best_score = score; best_f = f
+        if not best_f:
+            return [members]
+        with_f, without_f = [], []
+        for nid in members:
+            (with_f if best_f in feats[nid] else without_f).append(nid)
+        # Recurse if the bigger side is still mega-sized
+        out = []
+        for bucket in (with_f, without_f):
+            if len(bucket) > non_solo_total * MEGA_FRACTION and len(bucket) >= MIN_SUBCLUSTER_SIZE * 2:
+                out.extend(_split_mega(bucket))
+            elif bucket:
+                out.append(bucket)
+        return out
+
+    # Apply mega-split
+    refined: Dict[str, List[str]] = {}
+    split_counter = 0
+    for cid, members in by_component.items():
+        if cid == "__solo__":
+            refined[cid] = members
+            continue
+        if non_solo_total > 0 and len(members) > non_solo_total * MEGA_FRACTION and len(members) >= MIN_SUBCLUSTER_SIZE * 2:
+            buckets = _split_mega(members)
+            for b in buckets:
+                if not b: continue
+                key = f"split_{split_counter}_{b[0][:6]}"
+                split_counter += 1
+                refined[key] = b
+        else:
+            refined[cid] = members
+    by_component = refined
+
+    # ---- Discriminating-feature cluster naming -------------------------
+    # A cluster's name should be a feature that's *common inside* but
+    # *not in everything else*. We compute per-cluster TF-IDF over the
+    # tags/themes and pick the top non-emotion candidate.
+    SKIP_TAGS = {"work", "life", "day", "today", "thing", "stuff", "time", "things"}
+
+    # Total presence of each feature across the WHOLE graph (for IDF inside naming)
+    GLOBAL_PREVALENCE = {f: df / max(N, 1) for f, df in feat_df.items()}
 
     def _label_for(members: List[str]) -> Dict[str, Any]:
         if len(members) == 1 and members[0] in singletons:
-            return {"name": "Unconnected",
-                    "kind": "solo", "size": len(members),
-                    "top_terms": [], "top_emotion": None}
-        themes = Counter()
-        tags = Counter()
+            return {"name": "Unconnected", "kind": "solo",
+                    "size": len(members), "top_terms": [], "top_emotion": None}
+
+        themes_in = Counter()
+        tags_in = Counter()
         emotions = Counter()
         for nid in members:
             for t in raw_themes.get(nid, set()):
-                themes[t] += 1
+                themes_in[t] += 1
             for t in raw_tags.get(nid, set()):
-                tags[t] += 1
-        # Pull emotion from the original entries
+                tags_in[t] += 1
         for n in nodes:
             if n["id"] in members:
                 emotions[n["emotion"]] += 1
 
-        # Themes are phrasal and richer than tags — prefer them when they
-        # actually cover the cluster.
-        coverage_threshold = max(2, len(members) // 3)
-        ranked_themes = [t for t, c in themes.most_common() if c >= coverage_threshold]
-        ranked_tags = [t for t, c in tags.most_common()
-                       if c >= coverage_threshold and t not in SKIP_TAGS]
+        size = len(members)
+        # TF-IDF score per candidate: (count_in_cluster / size) × IDF
+        def _score(term: str, count: int) -> float:
+            tf = count / size
+            global_share = GLOBAL_PREVALENCE.get(term, 0.0001)
+            # IDF-like signal; heavily punish terms that appear in >60% of the graph
+            if global_share > 0.6:
+                return 0.0
+            return tf * feat_idf.get(term, 1.0) * (1.0 + math.log(count))
 
-        if ranked_themes:
-            name = ranked_themes[0].title()
+        coverage = max(2, size // 4)
+        theme_candidates = [(t, c, _score(t, c)) for t, c in themes_in.items() if c >= coverage]
+        theme_candidates.sort(key=lambda x: -x[2])
+
+        tag_candidates = [(t, c, _score(t, c)) for t, c in tags_in.items()
+                          if c >= coverage and t not in SKIP_TAGS]
+        tag_candidates.sort(key=lambda x: -x[2])
+
+        # Themes preferred — they read better as names
+        if theme_candidates and theme_candidates[0][2] > 0:
+            name = theme_candidates[0][0].title()
             kind = "theme"
-            top_terms = ranked_themes[:3]
-        elif ranked_tags:
-            name = "#" + ranked_tags[0]
+            top_terms = [t for t, _, _ in theme_candidates[:3]]
+        elif tag_candidates and tag_candidates[0][2] > 0:
+            name = "#" + tag_candidates[0][0]
             kind = "tag"
-            top_terms = ["#" + t for t in ranked_tags[:3]]
+            top_terms = ["#" + t for t, _, _ in tag_candidates[:3]]
         else:
             top_emo = emotions.most_common(1)
             if top_emo:
@@ -3598,28 +3834,37 @@ def get_graph(limit: int = 250, min_weight: float = 0.18):
                 top_terms = []
 
         return {
-            "name": name,
-            "kind": kind,
-            "size": len(members),
+            "name": name, "kind": kind, "size": size,
             "top_terms": top_terms,
             "top_emotion": emotions.most_common(1)[0][0] if emotions else None,
         }
 
     clusters_out: List[dict] = []
     cluster_id_for_node: Dict[str, str] = {}
+    used_names = set()
     for comp_root, members in by_component.items():
         info = _label_for(members)
+        # Disambiguate if two clusters happen to land on the same primary
+        # name (e.g. both pick #sleep). Suffix the second one with the
+        # next-best term in its top_terms list.
+        name = info["name"]
+        if name in used_names and len(info.get("top_terms", [])) > 1:
+            for alt in info["top_terms"][1:]:
+                alt_name = alt.title() if not alt.startswith("#") else alt
+                if alt_name not in used_names:
+                    info["name"] = alt_name
+                    break
+        used_names.add(info["name"])
+
         cid = comp_root[:8] if comp_root != "__solo__" else "solo"
-        # Distinct slug so the UI can colour-key
         cluster_record = {"id": cid, **info, "members": members}
         clusters_out.append(cluster_record)
         for nid in members:
             cluster_id_for_node[nid] = cid
 
-    # Largest cluster first (excluding the solo bucket, which sinks to the end)
     clusters_out.sort(key=lambda c: (c["id"] == "solo", -c["size"], c["name"]))
 
-    # Per-node degree + cluster assignment
+    # ---- Per-node degree + cluster assignment --------------------------
     deg = Counter()
     for ed in edges:
         deg[ed["source"]] += 1

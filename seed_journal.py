@@ -34,9 +34,39 @@ JOURNAL_FILE = os.path.join(DATA_DIR, "journal.json")
 TODAY = datetime.now().replace(hour=21, minute=30, second=0, microsecond=0)
 
 # Each row: (days_ago, hour, emotion, intensity, tags, themes, title, text)
-# 40 rows. Some days have 2 entries; some days are skipped (so streaks are
-# realistic, not perfect).
+# 50-day window, ~53 entries (a few days have 2, a few days are skipped so
+# streaks and the heatmap look honest rather than ruler-flat).
 RAW = [
+    # ----- Week 7 ago (49–43 days ago) — "before I was journaling honestly" -----
+    (49, 22, "frustrated",   6, ["work","sleep","habits"], ["intention drift"],
+     "Said I'd start tomorrow",
+     "Told myself last week I'd start journaling, running, sleeping by 11, all of it. Here I am at 11:45 typing this on my phone, eating chips. Tomorrow for real."),
+    (48, 21, "anxious",      7, ["work","mom","family"], ["pleasing others"],
+     "Mom's call again",
+     "Mom called to ask about Diwali plans. The conversation slid into 'when are you settling down' inside three minutes. I went monosyllabic. Hung up feeling small and then mad at myself for feeling small."),
+    (47, 9,  "tired",        6, ["sleep","work"], ["pace"],
+     "Caffeine shaky",
+     "Three coffees by 11am and still couldn't focus. The migration spec is half-written and the deadline is Friday. Going to grind through tonight even though I know that never works."),
+    (46, 22, "overwhelmed",  8, ["work","deadlines","sleep"], ["overcommitting"],
+     "Friday came",
+     "Shipped the migration spec at 8:30pm. It's not good. It's done. Difference matters, I keep telling myself."),
+    (44, 20, "lonely",       6, ["friendship","loneliness","weekend"], ["distance"],
+     "Saturday alone",
+     "Everyone has plans I'm not part of. Told myself I like Saturdays solo. The truth is I'd like to be invited and then say no."),
+    (43, 21, "reflective",   5, ["reading","reflection"], ["self-awareness"],
+     "Bought a notebook",
+     "Walked into the bookstore for nothing specific, walked out with a notebook. Thinking about actually using it. We'll see if past-me's pattern wins."),
+
+    # ----- Week 6 ago (42–37 days ago) — narrative arc starts -----
+    (42, 22, "anxious",      7, ["work","sleep","anxiety"], ["rumination"],
+     "Sunday dread, again",
+     "Same Sunday-night tightness as every Sunday this year. Week ahead has the design review on Wednesday and I haven't started prep. Brain won't stop replaying tomorrow's standup."),
+    (41, 9,  "tired",        6, ["sleep","running","habits"], ["intention drift"],
+     "No run again",
+     "Set the alarm. Hit snooze. Same as last week. The shoes by the door are now a quiet little accusation."),
+    (40, 22, "frustrated",   6, ["work","feedback","coding"], ["ego and learning"],
+     "Got called out in review",
+     "My PR got pushed back. Reviewer was right — I knew the issues were there and shipped anyway. The annoying part is I'd told myself I wouldn't ship lazy code this quarter."),
     (39, 9,  "tired",        7, ["work","deadlines","sleep"], ["overwhelm"],
      "Long Monday",
      "Slack didn't stop pinging until 9pm. I closed the laptop and just stared at the ceiling for a while. Skipped dinner. Ate cereal at 10:30. Tomorrow's standup is going to be brutal."),

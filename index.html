@@ -560,12 +560,35 @@ body {
   cursor: pointer; transition: all 0.15s ease;
 }
 .mode-switch button.active { background: var(--accent-grad); color: white; box-shadow: 0 2px 8px rgba(79, 124, 90,0.25); }
-.persona-select {
-  background: var(--bg-elev); border: 1.5px solid var(--border); border-radius: 12px;
-  padding: 7px 12px; font: inherit; font-size: 12.5px; color: var(--text);
-  cursor: pointer; box-shadow: var(--shadow-xs);
+.persona-picker {
+  display: flex; gap: 6px; align-items: stretch;
+  background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px;
+  padding: 4px; box-shadow: var(--shadow-xs);
 }
-.persona-select:focus { outline: none; border-color: var(--accent); box-shadow: var(--shadow-glow); }
+.persona-pill {
+  display: flex; flex-direction: column; align-items: flex-start;
+  padding: 6px 12px; border-radius: 10px;
+  background: transparent; border: none; color: var(--text-muted);
+  cursor: pointer; transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+  font: inherit; text-align: left; min-width: 110px;
+}
+.persona-pill .p-name { font-size: 13px; font-weight: 600; color: var(--text-muted); line-height: 1.2; }
+.persona-pill .p-desc { font-size: 10.5px; color: var(--text-dim); margin-top: 1px; line-height: 1.3; }
+.persona-pill:hover { background: var(--bg-1); }
+.persona-pill:hover .p-name { color: var(--text); }
+.persona-pill.active {
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  box-shadow: 0 2px 8px rgba(47, 82, 56, 0.18), inset 0 1px 0 rgba(255,255,255,0.10);
+}
+.persona-pill.active .p-name { color: white; }
+.persona-pill.active .p-desc { color: rgba(255,255,255,0.78); }
+.persona-pill:focus-visible { outline: none; box-shadow: var(--shadow-glow); }
+
+@media (max-width: 760px) {
+  .persona-pill .p-desc { display: none; }
+  .persona-pill { min-width: 0; padding: 6px 10px; }
+}
+
 .chat-bar .spacer { flex: 1; }
 .chat-bar .hint { font-size: 11.5px; color: var(--text-dim); }
 
@@ -1541,11 +1564,20 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
               <button type="button" data-mode="journal" class="active">Journal</button>
               <button type="button" data-mode="general">General</button>
             </div>
-            <select class="persona-select" id="persona-select" aria-label="Personality">
-              <option value="honest_coach">Brutally honest coach</option>
-              <option value="calm_therapist">Calm therapist</option>
-              <option value="analytical_observer">Analytical observer</option>
-            </select>
+            <div class="persona-picker" id="persona-picker" role="radiogroup" aria-label="Voice">
+              <button type="button" class="persona-pill active" data-persona="companion">
+                <span class="p-name">Companion</span>
+                <span class="p-desc">Warm friend who's read it all</span>
+              </button>
+              <button type="button" class="persona-pill" data-persona="observer">
+                <span class="p-name">Observer</span>
+                <span class="p-desc">Quiet, evidence-first</span>
+              </button>
+              <button type="button" class="persona-pill" data-persona="challenger">
+                <span class="p-name">Challenger</span>
+                <span class="p-desc">Kind but direct</span>
+              </button>
+            </div>
             <div class="spacer"></div>
             <span class="hint" id="chat-mode-hint">Grounded in your entries</span>
           </div>
@@ -2437,8 +2469,14 @@ const chatInput = $("chat-input");
 let chatHistoryLoaded = false;
 
 // --- mode + personality state (persisted) ----------------------------------
+const PERSONA_ALIASES = {
+  honest_coach: "challenger",
+  calm_therapist: "companion",
+  analytical_observer: "observer",
+};
 let chatMode = localStorage.getItem("innerbloom.chatMode") || "journal";
-let chatPersona = localStorage.getItem("innerbloom.chatPersona") || "honest_coach";
+let chatPersona = localStorage.getItem("innerbloom.chatPersona") || "companion";
+if (PERSONA_ALIASES[chatPersona]) chatPersona = PERSONA_ALIASES[chatPersona];
 
 function applyChatMode() {
   $$(".mode-switch button").forEach(b => {
@@ -2450,8 +2488,10 @@ function applyChatMode() {
     : "General assistant — journal context off";
 }
 function applyPersona() {
-  const sel = $("persona-select");
-  if (sel) sel.value = chatPersona;
+  $$(".persona-pill").forEach(b => {
+    b.classList.toggle("active", b.dataset.persona === chatPersona);
+    b.setAttribute("aria-checked", b.dataset.persona === chatPersona ? "true" : "false");
+  });
 }
 $$(".mode-switch button").forEach(b => {
   b.addEventListener("click", () => {
@@ -2460,9 +2500,12 @@ $$(".mode-switch button").forEach(b => {
     applyChatMode();
   });
 });
-$("persona-select")?.addEventListener("change", (e) => {
-  chatPersona = e.target.value;
-  localStorage.setItem("innerbloom.chatPersona", chatPersona);
+$$(".persona-pill").forEach(b => {
+  b.addEventListener("click", () => {
+    chatPersona = b.dataset.persona;
+    localStorage.setItem("innerbloom.chatPersona", chatPersona);
+    applyPersona();
+  });
 });
 applyChatMode();
 applyPersona();
@@ -3541,69 +3584,158 @@ function clusterColorFor(cid) {
   return graphState.clusterColors.get(cid) || "#6a9a72";
 }
 
+// Each cluster gets a target centroid arranged around a soft circle in
+// the main canvas area. Solos go to a "park" lane along the bottom strip
+// so they don't drift into the main composition.
+function _computeClusterAnchors() {
+  const canvas = $("graph-canvas");
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  const cx = w / 2, cy = h / 2;
+  const realClusters = (graphState.clusters || []).filter(c => c.id !== "solo");
+  if (!realClusters.length) {
+    graphState.anchors = new Map();
+    return;
+  }
+  // Sort by size descending so the biggest takes the center-ish slot
+  const sorted = [...realClusters].sort((a, b) => b.size - a.size);
+  const anchors = new Map();
+  if (sorted.length === 1) {
+    anchors.set(sorted[0].id, { x: cx, y: cy * 0.85 });
+  } else {
+    // Largest in the middle; smaller ones around it on a circle
+    // Use ellipse radii so wide canvases lay out nicely
+    const rX = Math.min(w * 0.30, 360);
+    const rY = Math.min(h * 0.28, 280);
+    // Place 1st at center, rest around
+    anchors.set(sorted[0].id, { x: cx, y: cy * 0.92 });
+    const rest = sorted.slice(1);
+    rest.forEach((c, i) => {
+      // Angles distributed around top half + sides, biasing away from the bottom
+      // where solo nodes park
+      const t = -Math.PI * 0.85 + (i / rest.length) * Math.PI * 1.7;
+      anchors.set(c.id, {
+        x: cx + Math.cos(t) * rX,
+        y: cy * 0.92 + Math.sin(t) * rY,
+      });
+    });
+  }
+  graphState.anchors = anchors;
+}
+
 function initGraphSim() {
   const canvas = $("graph-canvas");
-  // Spawn nodes in a circle so the simulation has a sane starting layout
-  const cx = canvas.clientWidth / 2;
-  const cy = canvas.clientHeight / 2;
-  const r0 = Math.min(cx, cy) * 0.7;
-  graphState.nodes.forEach((n, i) => {
-    const a = (i / graphState.nodes.length) * Math.PI * 2;
-    n.x = cx + Math.cos(a) * r0;
-    n.y = cy + Math.sin(a) * r0;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  _computeClusterAnchors();
+  const anchors = graphState.anchors;
+
+  // Solo nodes park in a horizontal strip at the bottom
+  const solos = graphState.nodes.filter(n => (n.cluster_id || "solo") === "solo");
+  const soloLaneY = h - 40;
+  const soloLaneX0 = 60, soloLaneX1 = w - 60;
+  solos.forEach((n, i) => {
+    const t = solos.length === 1 ? 0.5 : i / (solos.length - 1);
+    n.x = soloLaneX0 + t * (soloLaneX1 - soloLaneX0);
+    n.y = soloLaneY;
     n.vx = 0; n.vy = 0;
     graphState.byId.set(n.id, n);
   });
+
+  // Clustered nodes spawn near their cluster anchor with a small jitter
+  graphState.nodes.forEach(n => {
+    if ((n.cluster_id || "solo") === "solo") return;
+    const a = anchors.get(n.cluster_id);
+    if (!a) {
+      n.x = w / 2; n.y = h / 2;
+    } else {
+      n.x = a.x + (Math.random() - 0.5) * 80;
+      n.y = a.y + (Math.random() - 0.5) * 80;
+    }
+    n.vx = 0; n.vy = 0;
+    graphState.byId.set(n.id, n);
+  });
+
   graphState.scale = 1; graphState.panX = 0; graphState.panY = 0;
 }
 
 function stepGraphSim() {
-  const { nodes, edges } = graphState;
+  const { nodes, edges, anchors } = graphState;
   if (!nodes.length) return;
-  const repulse = 1500;     // node-node repulsion strength
-  const springLen = 90;     // ideal edge length
-  const springK = 0.012;    // edge spring stiffness
-  const damp = 0.86;        // velocity damping
-  const center = { x: $("graph-canvas").clientWidth / 2, y: $("graph-canvas").clientHeight / 2 };
 
-  // Pairwise repulsion (O(n²) — fine up to a few hundred)
+  const canvas = $("graph-canvas");
+  const W = canvas.clientWidth, H = canvas.clientHeight;
+  const damp = 0.86;
+
+  // Node-node repulsion is *bounded* — falls off past ~120px so distant
+  // clusters don't push each other away, but local overlaps still resolve.
+  const repulseRange = 130;
+  const repulseStrength = 1600;
   for (let i = 0; i < nodes.length; i++) {
     const a = nodes[i];
     for (let j = i + 1; j < nodes.length; j++) {
       const b = nodes[j];
       let dx = a.x - b.x, dy = a.y - b.y;
       let d2 = dx * dx + dy * dy;
+      if (d2 > repulseRange * repulseRange) continue;
       if (d2 < 0.01) { d2 = 0.01; dx = (Math.random() - 0.5); dy = (Math.random() - 0.5); }
-      const f = repulse / d2;
       const d = Math.sqrt(d2);
+      const f = repulseStrength / d2;
       const fx = (dx / d) * f, fy = (dy / d) * f;
       a.vx += fx; a.vy += fy;
       b.vx -= fx; b.vy -= fy;
     }
   }
 
-  // Edge spring forces (stronger pull for higher-weight edges)
+  // Edge springs — stronger pull for higher weight (same cluster typically)
+  const springLen = 70;
+  const springK = 0.020;
   for (const e of edges) {
     const a = graphState.byId.get(e.source);
     const b = graphState.byId.get(e.target);
     if (!a || !b) continue;
     const dx = b.x - a.x, dy = b.y - a.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 0.01;
-    const target = springLen * (1.4 - e.weight); // tighter clusters when weight is high
+    const target = springLen * (1.5 - e.weight);
     const f = (d - target) * springK * (0.5 + e.weight);
     const fx = (dx / d) * f, fy = (dy / d) * f;
     a.vx += fx; a.vy += fy;
     b.vx -= fx; b.vy -= fy;
   }
 
-  // Gentle pull to center so the graph doesn't drift off-screen
+  // Cluster gravity: each clustered node is gently pulled to its anchor.
+  // This is what keeps "Belonging" on the left from drifting into "#sleep"
+  // territory.
+  const anchorPull = 0.020;
+  if (anchors && anchors.size) {
+    for (const n of nodes) {
+      const cid = n.cluster_id || "solo";
+      if (cid === "solo") continue;
+      const a = anchors.get(cid);
+      if (!a) continue;
+      n.vx += (a.x - n.x) * anchorPull;
+      n.vy += (a.y - n.y) * anchorPull;
+    }
+  }
+
+  // Solo nodes are locked to their lane Y; only slight horizontal float
+  const soloLaneY = H - 40;
   for (const n of nodes) {
-    n.vx += (center.x - n.x) * 0.0008;
-    n.vy += (center.y - n.y) * 0.0008;
+    if ((n.cluster_id || "solo") !== "solo") continue;
+    n.vy += (soloLaneY - n.y) * 0.08;
+    n.vx *= 0.5;  // dampen horizontal motion so they sit still
+  }
+
+  // Integrate + damp; soft walls keep everything inside the canvas
+  for (const n of nodes) {
     n.vx *= damp; n.vy *= damp;
     if (graphState.drag !== n) {
       n.x += n.vx; n.y += n.vy;
     }
+    // Soft walls
+    const pad = 24;
+    if (n.x < pad) n.vx += (pad - n.x) * 0.06;
+    if (n.x > W - pad) n.vx += (W - pad - n.x) * 0.06;
+    if (n.y < pad) n.vy += (pad - n.y) * 0.06;
+    if (n.y > H - pad) n.vy += (H - pad - n.y) * 0.06;
   }
 }
 
@@ -3644,10 +3776,11 @@ function drawGraph() {
     const pts = list.map(n => [n.x, n.y]);
     const hull = convexHull(pts);
     if (hull.length < 3) continue;
-    // Expand outward by `pad` along centroid direction
+    // Expand outward by `pad` along centroid direction. Smaller clusters
+    // get tighter padding so they don't visually overpower large ones.
     const cx = hull.reduce((s, p) => s + p[0], 0) / hull.length;
     const cy = hull.reduce((s, p) => s + p[1], 0) / hull.length;
-    const pad = 28;
+    const pad = Math.max(20, Math.min(34, 18 + list.length * 1.5));
     const padded = hull.map(([x, y]) => {
       const dx = x - cx, dy = y - cy, d = Math.sqrt(dx*dx + dy*dy) || 1;
       return [x + (dx/d) * pad, y + (dy/d) * pad];
@@ -3964,7 +4097,11 @@ async function loadGraph() {
   }
 }
 
-window.addEventListener("resize", () => { if (graphState.loaded) drawGraph(); });
+window.addEventListener("resize", () => {
+  if (!graphState.loaded) return;
+  _computeClusterAnchors();
+  drawGraph();
+});
 
 // =========================================================================
 // MUSIC (SPOTIFY)
