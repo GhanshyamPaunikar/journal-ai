@@ -1710,6 +1710,170 @@ Recent mood and topics:
     return {"prompt": out}
 
 
+# ---------------------------------------------------------------------------
+# Anniversary / time-shifted surfacing
+# ---------------------------------------------------------------------------
+# Pull a window of entries from ±N days around a target date, compare against
+# a matching recent window, and (optionally) ask the LLM to write a "then vs
+# now" reflection. Used by the Write view's surfacing card.
+
+def _window_around(entries: List[dict], target: datetime,
+                   spread_days: int = 6) -> List[dict]:
+    lo = target - timedelta(days=spread_days)
+    hi = target + timedelta(days=spread_days)
+    out = []
+    for e in entries:
+        dt = _safe_dt(e.get("timestamp"))
+        if dt and lo <= dt <= hi:
+            out.append(e)
+    out.sort(key=lambda e: e.get("timestamp", ""))
+    return out
+
+
+def _summarize_window(entries: List[dict]) -> dict:
+    """Compact stats for one window — top emotion / tags / themes, avg
+    intensity, representative excerpts."""
+    if not entries:
+        return {"count": 0}
+    emotions = Counter()
+    tags = Counter()
+    themes = Counter()
+    intensities = []
+    for e in entries:
+        emotions[(e.get("emotion") or "neutral").lower()] += 1
+        for t in e.get("tags", []) or []:
+            tags[str(t).lower()] += 1
+        for t in e.get("themes", []) or []:
+            themes[str(t).lower()] += 1
+        if isinstance(e.get("intensity"), (int, float)):
+            intensities.append(float(e["intensity"]))
+    avg_intensity = round(sum(intensities) / len(intensities), 2) if intensities else None
+    excerpts = [{
+        "id": e["id"], "short": e["id"][:8],
+        "date": (e.get("timestamp") or "")[:10],
+        "emotion": e.get("emotion", "neutral"),
+        "intensity": e.get("intensity"),
+        "title": e.get("title") or e.get("summary") or "",
+        "summary": (e.get("summary") or e.get("text", ""))[:200],
+    } for e in entries[-3:]]
+    return {
+        "count": len(entries),
+        "avg_intensity": avg_intensity,
+        "top_emotion": emotions.most_common(1)[0] if emotions else None,
+        "emotions": emotions.most_common(5),
+        "tags": tags.most_common(5),
+        "themes": themes.most_common(5),
+        "excerpts": excerpts,
+    }
+
+
+@app.get("/anniversary")
+def anniversary(days: int = 30, spread: int = 6, with_reflection: bool = True):
+    """Then-vs-now comparison surfacing.
+
+    - `days`: how far back to look (default 30 = one month ago)
+    - `spread`: half-width of the comparison window in days (default 6)
+    - `with_reflection`: include the LLM-written 'then vs now' card
+
+    Returns side-by-side stats for both windows plus an LLM reflection
+    grounded in cited entry IDs.
+    """
+    entries = load_file(JOURNAL_FILE)
+    if not entries:
+        return {"available": False, "reason": "no entries yet"}
+
+    now = datetime.now()
+    target = now - timedelta(days=max(1, days))
+
+    then_window = _window_around(entries, target, spread)
+    now_window  = _window_around(entries, now,    spread)
+
+    if not then_window:
+        return {
+            "available": False,
+            "reason": f"no entries within {spread} days of {target.date().isoformat()}",
+            "days": days, "spread": spread,
+        }
+
+    then_summary = _summarize_window(then_window)
+    now_summary  = _summarize_window(now_window)
+
+    reflection_text = ""
+    reflection_citations: List[dict] = []
+    if with_reflection and len(then_window) + len(now_window) >= 3:
+        by_id = {e["id"]: e for e in entries}
+
+        def _lines(window: List[dict]) -> str:
+            out = []
+            for e in window[-8:]:
+                snippet = (e.get("summary") or e.get("text", ""))[:200].replace("\n", " ").strip()
+                out.append(
+                    f"[id={e['id'][:8]} | {(e.get('timestamp') or '')[:10]} | "
+                    f"emotion={e.get('emotion','?')}/{e.get('intensity',5)}] {snippet}"
+                )
+            return "\n".join(out) if out else "(nothing in window)"
+
+        period_label = "a month ago" if days == 30 else (
+            "a year ago" if days == 365 else f"{days} days ago"
+        )
+
+        schema = (
+            '{\n'
+            '  "same":      "1 sentence — what is unchanged. Cite [id8].",\n'
+            '  "shifted":   "1 sentence — what is actually different. Cite [id8].",\n'
+            '  "avoiding":  "1 sentence — what is still being avoided. Cite [id8].",\n'
+            '  "becoming":  "1 short sentence — direction they are moving in"\n'
+            '}'
+        )
+        system = (
+            "You are an honest pattern observer for a personal journal. "
+            "Write a short, grounded then-vs-now reflection. Every claim that "
+            "names a fact must cite an 8-char entry id from the brackets. "
+            "Don't moralise; don't motivate. Output strict JSON only."
+        )
+        prompt = f"""Compare the user's life {period_label} versus right now.
+
+THEN window (around {target.date().isoformat()}):
+{_lines(then_window)}
+
+NOW window (around {now.date().isoformat()}):
+{_lines(now_window)}
+
+Rules:
+- Each of "same", "shifted", "avoiding" should reference at least one [id8] from the windows above.
+- Be specific. Quote their framing where you can.
+- "becoming" should describe direction, not destination, no citation needed.
+
+Schema (JSON exactly, no fences):
+{schema}
+"""
+        raw = call_llama(prompt, system=system, temperature=0.4, timeout=180)
+        obj = extract_json(raw) or {}
+        reflection_text = {
+            "same":     str(obj.get("same", "")).strip()[:400],
+            "shifted":  str(obj.get("shifted", "")).strip()[:400],
+            "avoiding": str(obj.get("avoiding", "")).strip()[:400],
+            "becoming": str(obj.get("becoming", "")).strip()[:400],
+        }
+        # Resolve every [id8] referenced in the reflection back to a citation pill
+        cited = set()
+        for s in reflection_text.values():
+            for m in re.findall(r"\[([a-z0-9]{4,8})\]", s):
+                cited.add(m)
+        reflection_citations = _enrich_evidence(list(cited), by_id)
+
+    return {
+        "available": True,
+        "days": days,
+        "spread": spread,
+        "then": {"date_center": target.date().isoformat(), **then_summary},
+        "now":  {"date_center": now.date().isoformat(), **now_summary},
+        "reflection": reflection_text or None,
+        "reflection_citations": reflection_citations,
+    }
+
+
+
 @app.get("/search")
 def search(q: str):
     entries = load_file(JOURNAL_FILE)

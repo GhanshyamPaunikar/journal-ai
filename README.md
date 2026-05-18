@@ -38,11 +38,12 @@ Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The
 
 ![Insights](docs/Insights.png)
 
-### 🕸️ Memory Graph Visualization
+### 🕸️ Memory Graph with named clusters
 - See your entries as an interactive force-directed graph (mind map)
-- Nodes show emotion, themes, and how many other entries they connect to
-- Drag, hover, zoom — explore your mental landscape visually
-- Edges show which entries share similar themes/emotions
+- **Clusters auto-named** — connected groups of entries are labelled after their dominant theme/tag (e.g. *"Self-Awareness"*, *"#sleep"*, *"Belonging"*)
+- Each cluster gets its own colour + a soft hull behind it
+- Clickable legend lets you **focus one cluster** (dims everything else)
+- Drag, hover, zoom — click any node to open that entry
 
 ![Memory Graph](docs/Memorygraph.png)
 
@@ -59,10 +60,29 @@ Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The
 
 ### 🎵 Spotify Integration (optional)
 - Connect your Spotify account (OAuth, zero secrets stored)
-- See correlations between what you listen to and your moods
-- AI interprets the patterns in plain English
+- **Genre-derived mood scatter** — each track placed on a valence × energy plane via a curated genre→mood table (works on every Spotify app, no `/audio-features` needed)
+- Quadrant histogram + a one-sentence read of your current music mood
+- Listening-pattern heatmap (hour × day-of-week)
+- AI interpretation correlating your music with journal intensity
 
 ![Spotify](docs/Spotify.png)
+
+### 🌱 Month-ago surfacing
+- Every time you open Write, Innerbloom looks at entries from around 30 days ago
+- A then-vs-now card shows your dominant emotion, top tags, and avg intensity for both windows
+- A short LLM-written reflection: **what's stayed the same · what's actually shifted · what you're still avoiding · the direction you're moving in** — every claim citing the entries it pulled from
+- Click any citation pill to jump to that entry
+- Dismiss for the day; re-fires once you write something new
+
+### 🔔 Local notifications
+- All scheduled in-browser, **nothing leaves your machine**
+- Configurable in Settings:
+  - **Morning prompt** — your daily LLM-generated journaling question at 8:30 am
+  - **Evening reflection** — 9 pm nudge if you haven't written yet
+  - **Streak risk** — 10:30 pm if your streak is > 3 days and today is empty
+  - **Month-ago surfacing** — once per day if there's a real "then vs now" match
+  - **Wellbeing alert** — when the burnout or spiral signal goes above "ok"
+- Fires while the tab is open; install Innerbloom as a PWA for background delivery
 
 ---
 
@@ -200,17 +220,47 @@ INNERBLOOM_OLLAMA_EMBED_URL=http://localhost:11434/api/embeddings
 INNERBLOOM_DATA_DIR=./data
 ```
 
-### Use a Different Model
+### Picking a Model
+
+The default is **`llama3.2:3b`** — it fits on 8 GB of RAM and runs at conversational speed. Innerbloom is built so swapping the model only changes *quality*; every endpoint, every insight engine, and every prompt works at any size. Here's what you actually gain by going bigger:
+
+| Model                           | RAM needed     | Speed (M1)        | What gets better                                                                                              |
+| ------------------------------- | -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- |
+| `llama3.2:3b` *(default)*       | 8 GB           | ~30 tok/s         | Solid daily driver. Snappy chat, decent insights. Occasionally misses subtle contradictions.                  |
+| `qwen2.5:7b-instruct`           | 8 GB tight     | ~15 tok/s         | Noticeably sharper at *narrative* and *contradictions*. Better at preserving long-context structure.          |
+| `mistral:7b-instruct`           | 8 GB tight     | ~18 tok/s         | Drier voice, very good at *triggers* (stats-style reasoning). Worst pick for *calm therapist* personality.    |
+| `llama3.1:8b`                   | 16 GB ideal    | ~10 tok/s         | The single biggest **insight quality** jump. Reflections feel personal instead of generic. Background-only on 8 GB. |
+| `qwen2.5:14b`                   | 16+ GB         | ~4 tok/s          | Therapist-grade nuance. Insight engines start naming patterns a friend would name. Chat is slow.              |
+| `gpt-oss:20b` / `mixtral:8x7b`  | 24+ GB / 48+ GB| 2–6 tok/s         | If you have the hardware, the *narrative* and *wellbeing summary* engines become genuinely worth re-reading.  |
+
+Pull any model first:
 
 ```bash
-# Bigger model for more nuanced analysis
+ollama pull llama3.1:8b
 INNERBLOOM_MODEL=llama3.1:8b uvicorn app:app --port 5000
-
-# Mistral for speed
-INNERBLOOM_MODEL=mistral:7b uvicorn app:app --port 5000
 ```
 
-Pull any model first: `ollama pull <name>`
+### Embeddings matter more than chat size
+
+On any machine, the biggest *single* upgrade is **pulling the embedding model**:
+
+```bash
+ollama pull nomic-embed-text
+```
+
+Without it, retrieval falls back to keyword matching. With it, you get real semantic search — "when did I feel unappreciated?" finds the entries about *being overlooked* even if neither word appears. This costs 274 MB and roughly doubles the felt intelligence of chat.
+
+### What changes when you upgrade
+
+The pieces that *most* benefit from a bigger model, ranked:
+
+1. **Contradiction engine** — needs careful reading; 3B finds ~half what 8B finds
+2. **Narrative engine** — coherent self-arcs need long-range attention; 3B writes flatter identity lines
+3. **Month-ago reflection** — same/shifted/avoiding card; 3B sometimes misses what shifted
+4. **Wellbeing summary** — quality of the 1-2 sentence read, not the level itself (levels are stats-driven)
+5. **Adaptive prompt** — bigger models pick prompts that connect to *your* themes, not generic ones
+
+The pieces that **don't really care** about model size: streaks, heatmap, tag cloud, memory graph clusters, Spotify genre mapping, crisis keyword detection. All deterministic.
 
 ---
 
@@ -242,7 +292,8 @@ Pull any model first: `ollama pull <name>`
 |---|---|---|
 | `GET` | `/analyze` | Long-term synthesis (emotions, contradictions, themes) |
 | `GET` | `/stats` | Streaks, word counts, emotion distribution, heatmap |
-| `GET` | `/graph` | Memory graph nodes & edges (force-directed layout) |
+| `GET` | `/graph` | Memory graph nodes, edges, and named clusters (force-directed layout) |
+| `GET` | `/anniversary?days=30` | Then-vs-now comparison around N days ago with LLM reflection |
 | `GET` | `/weekly-review` | Last 7 days reflection |
 | `GET` | `/monthly-review` | Last 30 days reflection |
 | `GET` | `/search?q=` | Keyword + semantic search |

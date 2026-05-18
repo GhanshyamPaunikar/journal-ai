@@ -12,57 +12,74 @@
    DESIGN TOKENS — Minimal Light Theme
    ========================================================================= */
 :root {
-  /* Surfaces */
-  --bg-base: #fafafa;
-  --bg-1: #f4f4f5;
-  --bg-2: #ededef;
-  --bg-glass: rgba(255,255,255,0.85);
-  --bg-glass-strong: rgba(255,255,255,0.95);
+  /* ============================================================
+     INNERBLOOM design tokens
+     Botanical-warm palette: parchment surfaces, deep ink text,
+     sage-green accent (growth), apricot secondary (warmth).
+     ============================================================ */
+
+  /* Surfaces — warm off-whites, never grey */
+  --bg-base: #faf8f4;        /* parchment */
+  --bg-1:    #f3efe7;        /* slightly darker for sidebar */
+  --bg-2:    #ebe6db;        /* chips, hover swatches */
+  --bg-glass: rgba(255, 253, 248, 0.88);
+  --bg-glass-strong: rgba(255, 253, 248, 0.96);
   --surface: #ffffff;
-  --surface-hover: #f7f7f9;
+  --surface-hover: #fbf9f4;
   --bg-elev: #ffffff;
+  --bg-warm-ink: #1f1d18;    /* dark inversion surface */
 
-  /* Text */
-  --text: #18181b;
-  --text-muted: #52525b;
-  --text-dim: #a1a1aa;
+  /* Text — warm ink, never pure black */
+  --text:       #1f1d18;
+  --text-muted: #5a574e;
+  --text-dim:   #99948a;
+  --text-on-accent: #ffffff;
 
-  /* Accent — single indigo, no gradients */
-  --accent: #4f46e5;
-  --accent-2: #6366f1;
-  --accent-3: #818cf8;
-  --accent-soft: rgba(79,70,229,0.08);
-  --accent-grad: #4f46e5;
-  --warm-grad: #4f46e5;
+  /* Accent — sage / leaf, the "bloom" signal */
+  --accent:       #4f7c5a;   /* sage primary */
+  --accent-2:     #6a9a72;   /* lighter step for gradients */
+  --accent-3:     #94bd9a;   /* softest step */
+  --accent-deep:  #2f5238;   /* darkest step, for active/pressed */
+  --accent-soft:  rgba(79, 124, 90, 0.10);
+  --accent-soft-strong: rgba(79, 124, 90, 0.18);
 
-  /* Borders */
-  --border: #e5e7eb;
-  --border-strong: #d4d4d8;
+  /* Secondary — apricot warmth */
+  --warm:       #d97a5b;     /* apricot */
+  --warm-2:     #e8a486;
+  --warm-soft:  rgba(217, 122, 91, 0.10);
 
-  /* Shadows — subtle, light */
-  --shadow-xs: 0 1px 2px rgba(0,0,0,0.04);
-  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.03);
-  --shadow:    0 4px 12px rgba(0,0,0,0.06), 0 2px 4px rgba(0,0,0,0.03);
-  --shadow-lg: 0 12px 28px rgba(0,0,0,0.08), 0 4px 10px rgba(0,0,0,0.04);
-  --shadow-xl: 0 24px 48px rgba(0,0,0,0.10), 0 8px 16px rgba(0,0,0,0.05);
-  --shadow-glow: 0 0 0 3px rgba(79,70,229,0.15);
+  /* Borders — warm neutrals */
+  --border:        #e6dfd1;
+  --border-strong: #d2c8b3;
 
-  /* Semantic */
-  --success: #16a34a;
-  --warning: #ca8a04;
-  --danger: #dc2626;
+  /* Shadows — softer, warmer */
+  --shadow-xs: 0 1px 2px rgba(48, 38, 24, 0.04);
+  --shadow-sm: 0 1px 3px rgba(48, 38, 24, 0.06), 0 1px 2px rgba(48, 38, 24, 0.03);
+  --shadow:    0 4px 14px rgba(48, 38, 24, 0.07), 0 2px 4px rgba(48, 38, 24, 0.03);
+  --shadow-lg: 0 14px 32px rgba(48, 38, 24, 0.09), 0 5px 12px rgba(48, 38, 24, 0.04);
+  --shadow-xl: 0 28px 56px rgba(48, 38, 24, 0.12), 0 10px 20px rgba(48, 38, 24, 0.05);
+  --shadow-glow: 0 0 0 3px rgba(79, 124, 90, 0.20);
 
-  /* Emotion dots */
-  --e-happy: #f59e0b;      --e-sad: #3b82f6;
-  --e-anxious: #ef4444;    --e-calm: #10b981;
-  --e-grateful: #a855f7;   --e-frustrated: #f97316;
-  --e-excited: #eab308;    --e-reflective: #6366f1;
-  --e-hopeful: #34d399;    --e-tired: #94a3b8;
-  --e-angry: #dc2626;      --e-content: #86efac;
-  --e-lonely: #9ca3af;     --e-proud: #f59e0b;
-  --e-overwhelmed: #fca5a5;--e-neutral: #a1a1aa;
+  /* Semantic — calibrated to the warm palette */
+  --success: #4f7c5a;
+  --warning: #c47e2a;
+  --danger:  #c4413a;
 
-  --radius-sm: 8px; --radius: 12px; --radius-lg: 16px; --radius-xl: 24px;
+  /* Emotion dots — sit naturally next to sage + apricot */
+  --e-happy:       #e0a83d;  --e-sad:         #5f7fa8;
+  --e-anxious:     #c4413a;  --e-calm:        #6fa17f;
+  --e-grateful:    #b07ab8;  --e-frustrated:  #d97a5b;
+  --e-excited:     #d99a2f;  --e-reflective:  #7a8da8;
+  --e-hopeful:     #94bd9a;  --e-tired:       #9d978a;
+  --e-angry:       #b53a3a;  --e-content:     #a8c8a8;
+  --e-lonely:      #8a8479;  --e-proud:       #e0a83d;
+  --e-overwhelmed: #d49da0;  --e-neutral:     #a9a397;
+
+  --radius-sm: 8px; --radius: 12px; --radius-lg: 18px; --radius-xl: 26px;
+
+  /* Legacy aliases (kept so existing inline styles don't break) */
+  --accent-grad: var(--accent);
+  --warm-grad: var(--warm);
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -74,13 +91,16 @@ body {
   -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
   position: relative;
 }
-::selection { background: rgba(79,70,229,0.15); color: var(--text); }
+::selection { background: rgba(79, 124, 90, 0.18); color: var(--text); }
 
-/* scrollbars */
-*::-webkit-scrollbar { width: 6px; height: 6px; }
+/* scrollbars — warm, subtle */
+*::-webkit-scrollbar { width: 8px; height: 8px; }
 *::-webkit-scrollbar-track { background: transparent; }
-*::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 6px; }
-*::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.20); }
+*::-webkit-scrollbar-thumb {
+  background: rgba(48, 38, 24, 0.12); border-radius: 8px;
+  border: 2px solid transparent; background-clip: padding-box;
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(48, 38, 24, 0.22); background-clip: padding-box; }
 
 /* =========================================================================
    LAYOUT
@@ -96,11 +116,19 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 11px; padding: 4px 10px 18px; margin-bottom: 6px; border-bottom: 1px solid var(--border); }
 .brand-logo {
-  width: 32px; height: 32px; border-radius: 10px;
-  background: var(--accent);
+  width: 36px; height: 36px; border-radius: 12px;
+  background: linear-gradient(150deg, var(--accent) 0%, var(--accent-deep) 100%);
   display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 12px rgba(47, 82, 56, 0.25), inset 0 1px 0 rgba(255,255,255,0.18);
+  position: relative;
+  flex-shrink: 0;
 }
-.brand-logo svg { width: 16px; height: 16px; color: white; }
+.brand-logo::after {
+  content: ""; position: absolute; inset: 0; border-radius: inherit;
+  background: radial-gradient(circle at 30% 25%, rgba(255,255,255,0.18), transparent 55%);
+  pointer-events: none;
+}
+.brand-logo svg { width: 22px; height: 22px; color: white; position: relative; z-index: 1; }
 .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
 .brand-text .title { font-family: 'Fraunces', serif; font-weight: 600; font-size: 17px; letter-spacing: -0.01em; color: var(--text); }
 .brand-text .sub { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.14em; margin-top: 1px; }
@@ -146,17 +174,17 @@ body {
 /* ---------- Main ---------- */
 .main { overflow-y: auto; position: relative; background: var(--bg-base); }
 .topbar {
-  position: sticky; top: 0; z-index: 10; padding: 18px 40px;
+  position: sticky; top: 0; z-index: 10; padding: 22px 44px;
   display: flex; align-items: center; justify-content: space-between;
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  background: rgba(250, 248, 244, 0.85);
+  backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--border);
 }
 .topbar h1 {
-  font-family: 'Fraunces', serif; font-size: 23px; font-weight: 500;
+  font-family: 'Fraunces', serif; font-size: 26px; font-weight: 500;
   letter-spacing: -0.02em; line-height: 1.1; color: var(--text);
 }
-.topbar .greeting { color: var(--text-muted); font-size: 12.5px; margin-top: 3px; }
+.topbar .greeting { color: var(--text-muted); font-size: 13px; margin-top: 4px; letter-spacing: 0.005em; }
 .topbar-actions { display: flex; align-items: center; gap: 8px; }
 
 .content { padding: 32px 40px 100px; max-width: 1100px; margin: 0 auto; }
@@ -184,11 +212,11 @@ body {
 .btn svg { width: 14px; height: 14px; }
 .btn-primary {
   background: var(--accent-grad); border: none; color: white;
-  box-shadow: 0 4px 14px rgba(79,70,229,0.28);
+  box-shadow: 0 4px 14px rgba(79, 124, 90,0.28);
 }
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(79,70,229,0.4); background: var(--accent-grad); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(79, 124, 90,0.4); background: var(--accent-grad); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); box-shadow: none; }
-.btn-ghost:hover { background: rgba(79,70,229,0.06); color: var(--text); border-color: var(--border); box-shadow: none; }
+.btn-ghost:hover { background: rgba(79, 124, 90,0.06); color: var(--text); border-color: var(--border); box-shadow: none; }
 .btn-danger { color: var(--danger); border-color: rgba(220,38,38,0.2); }
 .btn-danger:hover { background: rgba(220,38,38,0.05); border-color: rgba(220,38,38,0.3); }
 .btn-spotify { background: #1db954; border: none; color: white; box-shadow: 0 4px 14px rgba(29,185,84,0.3); }
@@ -238,63 +266,144 @@ body {
 
 .kbd-inline {
   font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
-  background: rgba(79,70,229,0.06); border: 1px solid var(--border);
+  background: rgba(79, 124, 90,0.06); border: 1px solid var(--border);
   padding: 1px 5px; border-radius: 4px;
 }
 
 /* =========================================================================
    WRITE VIEW
    ========================================================================= */
-.write-wrap { display: flex; flex-direction: column; gap: 20px; }
+.write-wrap { display: flex; flex-direction: column; gap: 18px; max-width: 880px; margin: 0 auto; width: 100%; }
 
+/* --- Month-ago / anniversary card --- */
+.anniv-card {
+  background:
+    linear-gradient(135deg, rgba(79, 124, 90, 0.07) 0%, rgba(217, 122, 91, 0.06) 100%),
+    var(--bg-elev);
+  border: 1.5px solid rgba(79, 124, 90, 0.16);
+  border-radius: var(--radius-lg);
+  padding: 22px 24px;
+  box-shadow: var(--shadow-sm);
+  position: relative;
+  overflow: hidden;
+}
+.anniv-card::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
+  background: linear-gradient(180deg, var(--accent), var(--warm));
+}
+.anniv-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.anniv-eyebrow {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.16em;
+  font-weight: 700; color: var(--accent);
+}
+.anniv-title {
+  font-family: 'Fraunces', serif; font-size: 19px; color: var(--text);
+  letter-spacing: -0.01em; margin-top: 2px;
+}
+.anniv-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 14px;
+}
+@media (max-width: 720px) { .anniv-grid { grid-template-columns: 1fr; } }
+.anniv-col {
+  background: rgba(255, 253, 248, 0.7);
+  border: 1px solid var(--border);
+  border-radius: 12px; padding: 14px 16px;
+}
+.anniv-col-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  color: var(--text-dim); font-weight: 700; margin-bottom: 8px;
+}
+.anniv-col-emo {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: 'Fraunces', serif; font-size: 16px; color: var(--text);
+  text-transform: capitalize;
+}
+.anniv-col-emo .dot {
+  width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 3px rgba(255,255,255,0.7);
+}
+.anniv-col-meta {
+  font-size: 12px; color: var(--text-muted); margin-top: 4px;
+}
+.anniv-tags { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 8px; }
+.anniv-tag {
+  font-size: 10.5px; padding: 2px 8px; border-radius: 10px;
+  background: var(--bg-2); color: var(--text-muted);
+}
+.anniv-reflect {
+  display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px;
+  margin-top: 10px; align-items: baseline;
+}
+.anniv-reflect-key {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.14em;
+  font-weight: 700; color: var(--text-dim);
+}
+.anniv-reflect-val {
+  font-size: 13.5px; color: var(--text); line-height: 1.55;
+}
+.anniv-reflect-val em { color: var(--accent-deep); font-style: normal; font-weight: 500; }
+.anniv-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+/* --- Prompt card --- */
 .prompt-card {
-  background: linear-gradient(135deg, rgba(79,70,229,0.06) 0%, rgba(124,58,237,0.04) 100%);
-  border: 1.5px solid rgba(79,70,229,0.15); padding: 20px 24px;
-  border-radius: var(--radius-lg); display: flex; gap: 16px; align-items: flex-start;
+  background:
+    radial-gradient(ellipse at top right, rgba(217, 122, 91, 0.06), transparent 60%),
+    linear-gradient(135deg, rgba(79, 124, 90, 0.05) 0%, rgba(255, 253, 248, 1) 100%);
+  border: 1.5px solid rgba(79, 124, 90, 0.18);
+  padding: 22px 26px;
+  border-radius: var(--radius-lg);
+  display: flex; gap: 18px; align-items: flex-start;
   box-shadow: var(--shadow-sm);
 }
 .prompt-card .dot {
-  width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+  width: 9px; height: 9px; border-radius: 50%; background: var(--accent);
   margin-top: 10px; flex-shrink: 0;
-  box-shadow: 0 0 10px rgba(79,70,229,0.4);
+  box-shadow: 0 0 0 4px var(--accent-soft);
   animation: pulse 2.4s ease-in-out infinite;
 }
-@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(0.85); } }
+@keyframes pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.55; transform: scale(0.86); } }
 .prompt-card .label {
-  font-size: 10px; color: var(--accent); text-transform: uppercase;
-  letter-spacing: 0.16em; font-weight: 700; margin-bottom: 6px;
+  font-size: 10.5px; color: var(--accent); text-transform: uppercase;
+  letter-spacing: 0.16em; font-weight: 700; margin-bottom: 7px;
 }
 .prompt-card .text {
-  font-family: 'Fraunces', serif; font-size: 18px; font-style: italic;
-  color: var(--text); line-height: 1.5;
+  font-family: 'Fraunces', serif; font-size: 19px; font-style: italic;
+  color: var(--text); line-height: 1.55; letter-spacing: -0.005em;
 }
 
+/* --- Editor --- */
 .editor {
   background: var(--bg-elev); border: 1.5px solid var(--border);
-  border-radius: var(--radius-lg); padding: 26px;
+  border-radius: var(--radius-lg); padding: 30px 32px 22px;
   box-shadow: var(--shadow-sm);
   display: flex; flex-direction: column;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
-.editor-meta-row { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; flex-wrap: wrap; }
+.editor:focus-within { border-color: var(--accent-3); box-shadow: var(--shadow); }
+.editor-meta-row { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; flex-wrap: wrap; }
 .entry-title-input {
   background: transparent; border: none; color: var(--text);
-  font-family: 'Fraunces', serif; font-size: 24px; font-weight: 500;
-  flex: 1; min-width: 200px; letter-spacing: -0.02em;
+  font-family: 'Fraunces', serif; font-size: 28px; font-weight: 500;
+  flex: 1; min-width: 200px; letter-spacing: -0.02em; line-height: 1.2;
 }
-.entry-title-input::placeholder { color: var(--text-dim); }
+.entry-title-input::placeholder { color: var(--text-dim); font-weight: 400; }
 .entry-title-input:focus { outline: none; }
 
 .journal-textarea {
-  width: 100%; min-height: 320px; background: transparent; border: none;
-  color: var(--text); font: inherit; font-size: 16px; line-height: 1.8;
+  width: 100%; min-height: 340px; background: transparent; border: none;
+  color: var(--text); font: inherit; font-size: 17px; line-height: 1.75;
   resize: vertical; font-family: 'Fraunces', serif;
+  letter-spacing: -0.003em;
 }
 .journal-textarea::placeholder { color: var(--text-dim); font-style: italic; }
 .journal-textarea:focus { outline: none; }
 
 .editor-footer {
   display: flex; align-items: center; justify-content: space-between;
-  padding-top: 16px; margin-top: 14px; border-top: 1.5px solid var(--border);
+  padding-top: 18px; margin-top: 16px; border-top: 1px solid var(--border);
+  gap: 10px; flex-wrap: wrap;
 }
 .editor-stats { color: var(--text-dim); font-size: 12px; font-variant-numeric: tabular-nums; }
 .editor-stats .auto { margin-left: 12px; color: var(--text-muted); }
@@ -326,7 +435,7 @@ body {
   box-shadow: var(--shadow-xs); font-weight: 500;
 }
 .chip:hover { background: var(--bg-2); border-color: var(--border-strong); color: var(--text); }
-.chip.active { background: rgba(79,70,229,0.1); border-color: rgba(79,70,229,0.3); color: var(--accent); }
+.chip.active { background: rgba(79, 124, 90,0.1); border-color: rgba(79, 124, 90,0.3); color: var(--accent); }
 .chip .dot { width: 7px; height: 7px; border-radius: 50%; }
 
 .month-group-label {
@@ -348,7 +457,7 @@ body {
   opacity: 0; transition: opacity 0.15s ease;
 }
 .entry-card:hover {
-  border-color: rgba(79,70,229,0.2); transform: translateY(-2px);
+  border-color: rgba(79, 124, 90,0.2); transform: translateY(-2px);
   box-shadow: var(--shadow);
 }
 .entry-card:hover::before { opacity: 1; }
@@ -372,8 +481,8 @@ body {
 .entry-card .tags { display: flex; gap: 5px; margin-top: 10px; flex-wrap: wrap; }
 .entry-card .tag {
   font-size: 10.5px; padding: 3px 9px; border-radius: 20px;
-  background: rgba(79,70,229,0.07); color: var(--accent);
-  border: 1px solid rgba(79,70,229,0.15); font-weight: 500;
+  background: rgba(79, 124, 90,0.07); color: var(--accent);
+  border: 1px solid rgba(79, 124, 90,0.15); font-weight: 500;
 }
 
 /* =========================================================================
@@ -402,14 +511,14 @@ body {
   margin: 14px 0 20px;
 }
 .modal .body.editing {
-  background: rgba(79,70,229,0.03); border-radius: 10px; padding: 16px;
-  border: 1.5px dashed rgba(79,70,229,0.25); outline: none;
+  background: rgba(79, 124, 90,0.03); border-radius: 10px; padding: 16px;
+  border: 1.5px dashed rgba(79, 124, 90,0.25); outline: none;
 }
 .modal .section-label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--text-dim); margin: 16px 0 8px; font-weight: 700; }
 
 .reflect-q {
-  padding: 12px 15px; background: rgba(79,70,229,0.04);
-  border: 1.5px solid rgba(79,70,229,0.12); border-radius: 10px;
+  padding: 12px 15px; background: rgba(79, 124, 90,0.04);
+  border: 1.5px solid rgba(79, 124, 90,0.12); border-radius: 10px;
   margin-bottom: 8px; font-family: 'Fraunces', serif;
   font-style: italic; color: var(--text); font-size: 14.5px; line-height: 1.55;
 }
@@ -419,7 +528,7 @@ body {
   background: var(--bg-2); border: 1.5px solid var(--border); border-radius: 10px;
   margin-bottom: 6px; cursor: pointer; transition: all 0.15s ease;
 }
-.related-item:hover { border-color: rgba(79,70,229,0.25); background: var(--bg-elev); box-shadow: var(--shadow-sm); }
+.related-item:hover { border-color: rgba(79, 124, 90,0.25); background: var(--bg-elev); box-shadow: var(--shadow-sm); }
 .related-item .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .related-item .title { font-size: 13px; color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .related-item .date { font-size: 11px; color: var(--text-dim); flex-shrink: 0; }
@@ -450,7 +559,7 @@ body {
   font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-muted);
   cursor: pointer; transition: all 0.15s ease;
 }
-.mode-switch button.active { background: var(--accent-grad); color: white; box-shadow: 0 2px 8px rgba(79,70,229,0.25); }
+.mode-switch button.active { background: var(--accent-grad); color: white; box-shadow: 0 2px 8px rgba(79, 124, 90,0.25); }
 .persona-select {
   background: var(--bg-elev); border: 1.5px solid var(--border); border-radius: 12px;
   padding: 7px 12px; font: inherit; font-size: 12.5px; color: var(--text);
@@ -468,7 +577,7 @@ body {
 .msg.ai .md ul, .msg.ai .md ol { margin: 4px 0 8px; padding-left: 22px; }
 .msg.ai .md li { margin: 2px 0; }
 .msg.ai .md code {
-  background: rgba(79,70,229,0.10); padding: 1px 6px; border-radius: 5px;
+  background: rgba(79, 124, 90,0.10); padding: 1px 6px; border-radius: 5px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
 }
 .msg.ai .md pre {
@@ -484,7 +593,7 @@ body {
   display: flex; flex-direction: column; gap: 5px;
   max-width: 82%; align-self: flex-start;
   margin: 2px 0 -8px;
-  border-left: 2px solid rgba(79,70,229,0.18);
+  border-left: 2px solid rgba(79, 124, 90,0.18);
   padding-left: 12px;
 }
 .agent-steps.collapsed .agent-step:not(.summary) { display: none; }
@@ -534,8 +643,8 @@ body {
   color: var(--text-dim); font-weight: 700;
 }
 .contradiction-card .pattern-tag {
-  background: rgba(79,70,229,0.10); color: var(--accent);
-  border: 1px solid rgba(79,70,229,0.22);
+  background: rgba(79, 124, 90,0.10); color: var(--accent);
+  border: 1px solid rgba(79, 124, 90,0.22);
   padding: 2px 9px; border-radius: 99px; font-size: 10.5px; letter-spacing: 0.04em;
 }
 .contradiction-card .sev { padding: 2px 9px; border-radius: 99px; font-size: 10.5px; letter-spacing: 0.04em; }
@@ -585,8 +694,8 @@ body {
   color: var(--text-dim); font-weight: 700;
 }
 .trigger-card .cat {
-  background: rgba(79,70,229,0.10); color: var(--accent);
-  border: 1px solid rgba(79,70,229,0.22);
+  background: rgba(79, 124, 90,0.10); color: var(--accent);
+  border: 1px solid rgba(79, 124, 90,0.22);
   padding: 2px 9px; border-radius: 99px;
 }
 .trigger-card .dir {
@@ -636,10 +745,10 @@ body {
 .wellbeing-card .level-strip {
   position: absolute; left: 0; top: 0; bottom: 0; width: 4px;
 }
-.wellbeing-card.ok       .level-strip { background: #16a34a; }
-.wellbeing-card.watch    .level-strip { background: #ca8a04; }
-.wellbeing-card.elevated .level-strip { background: #ea580c; }
-.wellbeing-card.high     .level-strip { background: #e11d48; }
+.wellbeing-card.ok       .level-strip { background: var(--success); }
+.wellbeing-card.watch    .level-strip { background: var(--warning); }
+.wellbeing-card.elevated .level-strip { background: var(--warm); }
+.wellbeing-card.high     .level-strip { background: var(--danger); }
 .wellbeing-card .head {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
   flex-wrap: wrap;
@@ -651,10 +760,10 @@ body {
   padding: 3px 12px; border-radius: 99px; font-size: 11px; font-weight: 700;
   letter-spacing: 0.12em; text-transform: uppercase;
 }
-.wellbeing-card.ok       .level { background: rgba(34,197,94,0.10);  color: #16a34a; border: 1px solid rgba(34,197,94,0.25); }
-.wellbeing-card.watch    .level { background: rgba(234,179,8,0.12);  color: #ca8a04; border: 1px solid rgba(234,179,8,0.30); }
-.wellbeing-card.elevated .level { background: rgba(249,115,22,0.12); color: #ea580c; border: 1px solid rgba(249,115,22,0.30); }
-.wellbeing-card.high     .level { background: rgba(244,63,94,0.12);  color: #e11d48; border: 1px solid rgba(244,63,94,0.30); }
+.wellbeing-card.ok       .level { background: rgba(79, 124, 90, 0.10);   color: var(--success); border: 1px solid rgba(79, 124, 90, 0.25); }
+.wellbeing-card.watch    .level { background: rgba(196, 126, 42, 0.12);  color: var(--warning); border: 1px solid rgba(196, 126, 42, 0.30); }
+.wellbeing-card.elevated .level { background: rgba(217, 122, 91, 0.14);  color: var(--warm); border: 1px solid rgba(217, 122, 91, 0.30); }
+.wellbeing-card.high     .level { background: rgba(196, 65, 58, 0.12);   color: var(--danger); border: 1px solid rgba(196, 65, 58, 0.30); }
 .wellbeing-card .stats-row {
   display: flex; gap: 14px; flex-wrap: wrap;
   font-size: 11.5px; color: var(--text-dim);
@@ -700,8 +809,8 @@ body {
   font-size: 13px; font-weight: 600; color: var(--text);
 }
 .narrative-item .head .value-tag {
-  display: inline-block; background: rgba(79,70,229,0.10); color: var(--accent);
-  border: 1px solid rgba(79,70,229,0.22);
+  display: inline-block; background: rgba(79, 124, 90,0.10); color: var(--accent);
+  border: 1px solid rgba(79, 124, 90,0.22);
   font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
   padding: 2px 8px; border-radius: 99px; margin-right: 6px;
 }
@@ -770,7 +879,7 @@ body {
   padding: 4px 6px; margin: 0 -6px;
   border-radius: 6px; cursor: pointer; transition: background 0.12s;
 }
-.graph-legend-row:hover { background: rgba(79,70,229,0.06); }
+.graph-legend-row:hover { background: rgba(79, 124, 90,0.06); }
 .graph-legend-row.muted { opacity: 0.35; }
 .graph-legend-row.muted:hover { opacity: 0.6; }
 .graph-legend-swatch {
@@ -832,18 +941,22 @@ body {
 .safety-card .resource .detail { color: var(--text-muted); }
 
 .msg {
-  max-width: 76%; padding: 13px 17px; border-radius: 16px;
-  font-size: 14.5px; line-height: 1.65; animation: msgIn 0.22s ease;
+  max-width: 76%; padding: 14px 18px; border-radius: 18px;
+  font-size: 14.5px; line-height: 1.7; animation: msgIn 0.22s ease;
   white-space: pre-wrap; word-wrap: break-word;
+  position: relative;
 }
 @keyframes msgIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
 .msg.user {
-  align-self: flex-end; background: var(--accent-grad); color: white;
-  border-bottom-right-radius: 4px; box-shadow: 0 4px 16px rgba(79,70,229,0.25);
+  align-self: flex-end;
+  background: linear-gradient(135deg, var(--accent) 0%, var(--accent-deep) 100%);
+  color: white;
+  border-bottom-right-radius: 6px;
+  box-shadow: 0 6px 20px rgba(47, 82, 56, 0.22);
 }
 .msg.ai {
   align-self: flex-start; background: var(--bg-elev);
-  border: 1.5px solid var(--border); border-bottom-left-radius: 4px;
+  border: 1px solid var(--border); border-bottom-left-radius: 6px;
   max-width: 82%; color: var(--text); box-shadow: var(--shadow-sm);
 }
 .msg.ai .typing-dot {
@@ -858,18 +971,22 @@ body {
   30% { opacity: 1; transform: translateY(-3px); }
 }
 
-.cite-row { display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap; }
+.cite-row { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
 .cite-pill {
   display: inline-flex; align-items: center; gap: 6px;
-  padding: 3px 10px; border-radius: 20px;
-  background: rgba(79,70,229,0.08); color: var(--accent);
-  border: 1px solid rgba(79,70,229,0.18);
+  padding: 4px 11px; border-radius: 20px;
+  background: var(--bg-elev); color: var(--accent-deep);
+  border: 1px solid rgba(79, 124, 90, 0.22);
   font-size: 11px; cursor: pointer; transition: all 0.15s ease;
-  max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  font-weight: 500;
+  max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-weight: 600; letter-spacing: 0.01em;
+  box-shadow: var(--shadow-xs);
 }
-.cite-pill:hover { background: rgba(79,70,229,0.15); border-color: rgba(79,70,229,0.3); }
-.cite-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.cite-pill:hover {
+  background: var(--accent-soft); border-color: var(--accent);
+  transform: translateY(-1px); box-shadow: var(--shadow-sm);
+}
+.cite-pill .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255,255,255,0.7); }
 
 .chat-welcome { text-align: center; padding: 60px 20px 40px; }
 .chat-welcome h3 { font-family: 'Fraunces', serif; font-size: 30px; color: var(--text); font-weight: 500; margin-bottom: 10px; }
@@ -881,7 +998,7 @@ body {
   transition: all 0.15s ease; color: var(--text); box-shadow: var(--shadow-xs);
   font-weight: 500;
 }
-.suggest:hover { background: var(--bg-2); border-color: rgba(79,70,229,0.3); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.suggest:hover { background: var(--bg-2); border-color: rgba(79, 124, 90,0.3); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 
 .chat-input-wrap {
   border-top: 1.5px solid var(--border); padding: 16px 8px 4px;
@@ -898,11 +1015,11 @@ body {
   width: 48px; height: 48px; border-radius: 14px; background: var(--accent-grad);
   border: none; color: white; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 4px 14px rgba(79,70,229,0.3);
+  box-shadow: 0 4px 14px rgba(79, 124, 90,0.3);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
   flex-shrink: 0;
 }
-.send-btn:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 6px 20px rgba(79,70,229,0.4); }
+.send-btn:hover { transform: translateY(-1px) scale(1.03); box-shadow: 0 6px 20px rgba(79, 124, 90,0.4); }
 .send-btn svg { width: 18px; height: 18px; }
 .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
 
@@ -965,7 +1082,7 @@ body {
 
 .heatmap-wrap { overflow-x: auto; padding: 6px 0; }
 .heatmap { display: grid; grid-template-rows: repeat(7, 11px); grid-auto-flow: column; grid-auto-columns: 11px; gap: 3px; }
-.heat-cell { border-radius: 3px; background: rgba(79,70,229,0.06); cursor: pointer; position: relative; transition: transform 0.1s; }
+.heat-cell { border-radius: 3px; background: rgba(79, 124, 90,0.06); cursor: pointer; position: relative; transition: transform 0.1s; }
 .heat-cell:hover { transform: scale(1.4); z-index: 1; }
 .heat-cell:hover::after {
   content: attr(data-tip); position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%);
@@ -984,15 +1101,15 @@ body {
 
 .tag-cloud { display: flex; flex-wrap: wrap; gap: 7px; }
 .tag-cloud .tag {
-  padding: 5px 12px; border-radius: 20px; background: rgba(79,70,229,0.07);
-  color: var(--accent); border: 1px solid rgba(79,70,229,0.15);
+  padding: 5px 12px; border-radius: 20px; background: rgba(79, 124, 90,0.07);
+  color: var(--accent); border: 1px solid rgba(79, 124, 90,0.15);
   font-size: 12px; cursor: pointer; font-weight: 500; transition: all 0.15s;
 }
-.tag-cloud .tag:hover { background: rgba(79,70,229,0.14); border-color: rgba(79,70,229,0.3); }
+.tag-cloud .tag:hover { background: rgba(79, 124, 90,0.14); border-color: rgba(79, 124, 90,0.3); }
 
 .analysis-box {
-  background: linear-gradient(135deg, rgba(79,70,229,0.04) 0%, rgba(124,58,237,0.03) 100%);
-  border: 1.5px solid rgba(79,70,229,0.12); border-radius: var(--radius-lg);
+  background: linear-gradient(135deg, rgba(79, 124, 90,0.04) 0%, rgba(217, 122, 91,0.03) 100%);
+  border: 1.5px solid rgba(79, 124, 90,0.12); border-radius: var(--radius-lg);
   padding: 22px 24px; font-size: 14px; line-height: 1.75;
   color: var(--text); white-space: pre-wrap; margin-top: 12px;
 }
@@ -1004,7 +1121,7 @@ body {
    ========================================================================= */
 .music-hero {
   padding: 24px 28px; border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, rgba(29,185,84,0.07) 0%, rgba(79,70,229,0.05) 100%);
+  background: linear-gradient(135deg, rgba(29,185,84,0.07) 0%, rgba(79, 124, 90,0.05) 100%);
   border: 1.5px solid rgba(29,185,84,0.18); margin-bottom: 20px;
   box-shadow: var(--shadow-sm);
 }
@@ -1033,8 +1150,8 @@ body {
 }
 .quadrant-summary { display: flex; flex-direction: column; gap: 12px; }
 .quadrant-centroid {
-  background: linear-gradient(135deg, rgba(79,70,229,0.07), rgba(124,58,237,0.05));
-  border: 1px solid rgba(79,70,229,0.18);
+  background: linear-gradient(135deg, rgba(79, 124, 90,0.07), rgba(217, 122, 91,0.05));
+  border: 1px solid rgba(79, 124, 90,0.18);
   border-radius: 12px; padding: 14px 16px;
 }
 .quadrant-centroid-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; }
@@ -1071,7 +1188,7 @@ body {
   border-radius: 12px; transition: all 0.15s ease; overflow: hidden;
   box-shadow: var(--shadow-xs);
 }
-.track:hover { border-color: rgba(79,70,229,0.2); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.track:hover { border-color: rgba(79, 124, 90,0.2); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 .track .art { width: 40px; height: 40px; border-radius: 8px; background: var(--bg-2); flex-shrink: 0; object-fit: cover; }
 .track .info { flex: 1; min-width: 0; }
 .track .name { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
@@ -1094,6 +1211,19 @@ body {
 .settings-section .desc { color: var(--text-muted); font-size: 13px; margin-bottom: 14px; line-height: 1.6; }
 .settings-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 .settings-row label { font-size: 12px; color: var(--text-muted); min-width: 90px; font-weight: 500; }
+.notif-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 10px 14px; border-radius: 10px;
+  background: var(--bg-elev); border: 1px solid var(--border);
+  font-size: 13px; color: var(--text);
+  transition: border-color 0.15s ease, background 0.15s ease;
+  cursor: pointer;
+}
+.notif-row:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.notif-row span b { color: var(--text); font-weight: 600; }
+.notif-row input[type="checkbox"] {
+  width: 18px; height: 18px; accent-color: var(--accent); flex-shrink: 0;
+}
 .settings-row .input { flex: 1; min-width: 220px; }
 
 .code-line {
@@ -1164,7 +1294,7 @@ body {
   padding: 10px 14px; border-radius: 10px; display: flex; align-items: center;
   gap: 10px; font-size: 13.5px; cursor: pointer; transition: background 0.1s; color: var(--text);
 }
-.palette-item:hover, .palette-item.active { background: rgba(79,70,229,0.07); }
+.palette-item:hover, .palette-item.active { background: rgba(79, 124, 90,0.07); }
 .palette-item svg { width: 15px; height: 15px; color: var(--text-dim); flex-shrink: 0; }
 .palette-item .title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .palette-item .sub { font-size: 11px; color: var(--text-dim); }
@@ -1219,9 +1349,9 @@ body {
 }
 .crisis-note {
   font-size: 13.5px; line-height: 1.7; color: var(--text);
-  background: rgba(79,70,229,0.04); border-radius: var(--radius);
+  background: rgba(79, 124, 90,0.04); border-radius: var(--radius);
   padding: 16px 18px; margin-bottom: 22px;
-  border-left: 3px solid rgba(79,70,229,0.3);
+  border-left: 3px solid rgba(79, 124, 90,0.3);
 }
 .crisis-resources {
   background: rgba(220,38,38,0.04); border-radius: var(--radius);
@@ -1258,8 +1388,18 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
   <!-- -------- SIDEBAR -------- -->
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <div class="brand-logo">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+      <div class="brand-logo" aria-hidden="true">
+        <!-- Stylised bloom: stem + three opening petals. Inks in palette. -->
+        <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <!-- stem -->
+          <path d="M16 28 V18" />
+          <!-- leaf right -->
+          <path d="M16 22 C 19 21, 21 19, 21 16" />
+          <!-- bloom: three overlapping petals -->
+          <path d="M16 18 C 11 16, 9 11, 12 7 C 14 9, 16 12, 16 18 Z" fill="currentColor" fill-opacity="0.15"/>
+          <path d="M16 18 C 21 16, 23 11, 20 7 C 18 9, 16 12, 16 18 Z" fill="currentColor" fill-opacity="0.25"/>
+          <path d="M16 18 C 16 13, 16 9, 16 5"/>
+        </svg>
       </div>
       <div class="brand-text">
         <span class="title">Innerbloom</span>
@@ -1338,6 +1478,11 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
       <!-- =============== WRITE =============== -->
       <section class="view active" id="view-write">
         <div class="write-wrap">
+
+          <!-- Month-ago surfacing card. Hidden by default until /anniversary
+               returns something meaningful. -->
+          <div class="anniv-card" id="anniv-card" style="display:none;"></div>
+
           <div class="prompt-card">
             <div class="dot"></div>
             <div style="flex:1;">
@@ -1437,11 +1582,11 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
           <div class="heatmap-wrap"><div class="heatmap" id="heatmap"></div></div>
           <div class="heatmap-legend">
             <span>Less</span>
-            <span class="sq" style="background: rgba(79,70,229,0.07)"></span>
-            <span class="sq" style="background: rgba(99,102,241,0.28)"></span>
-            <span class="sq" style="background: rgba(99,102,241,0.52)"></span>
-            <span class="sq" style="background: rgba(99,102,241,0.76)"></span>
-            <span class="sq" style="background: #4f46e5"></span>
+            <span class="sq" style="background: rgba(79, 124, 90,0.07)"></span>
+            <span class="sq" style="background: rgba(106, 154, 114,0.28)"></span>
+            <span class="sq" style="background: rgba(106, 154, 114,0.52)"></span>
+            <span class="sq" style="background: rgba(106, 154, 114,0.76)"></span>
+            <span class="sq" style="background: #4f7c5a"></span>
             <span>More</span>
           </div>
         </div>
@@ -1892,6 +2037,8 @@ async function saveEntry() {
       toast("Entry saved · analyzed", "success");
     }
     updateStreak(); loadPrompt();
+    try { localStorage.removeItem(ANNIV_CACHE_KEY); } catch {}
+    loadAnniversary();
   } catch (e) {
     toast("Couldn't save. Is Ollama running?", "error");
   } finally {
@@ -1910,6 +2057,126 @@ async function loadPrompt() {
   }
 }
 $("refresh-prompt").addEventListener("click", loadPrompt);
+
+// --- Month-ago surfacing card ----------------------------------------
+// Pulls /anniversary?days=30. Only renders if the backend returns a real
+// comparison (≥1 entry near 30 days ago). Cached for the day in
+// localStorage so reopening the app doesn't reflow the card.
+const ANNIV_CACHE_KEY = "innerbloom.anniv.cache";
+async function loadAnniversary() {
+  const host = $("anniv-card");
+  if (!host) return;
+  const today = new Date().toISOString().slice(0, 10);
+  // Day-level cache: same day = reuse
+  try {
+    const raw = localStorage.getItem(ANNIV_CACHE_KEY);
+    if (raw) {
+      const c = JSON.parse(raw);
+      if (c.day === today && c.data) {
+        renderAnniversary(c.data);
+        return;
+      }
+    }
+  } catch {}
+
+  try {
+    const r = await api("/anniversary?days=30&spread=6");
+    if (r && r.available) {
+      try { localStorage.setItem(ANNIV_CACHE_KEY, JSON.stringify({ day: today, data: r })); } catch {}
+      renderAnniversary(r);
+    } else {
+      host.style.display = "none";
+    }
+  } catch {
+    host.style.display = "none";
+  }
+}
+
+function renderAnniversary(r) {
+  const host = $("anniv-card");
+  if (!host) return;
+  const then = r.then || {};
+  const now  = r.now  || {};
+  const fmtDate = iso => {
+    const d = new Date(iso); return d.toLocaleDateString([], { month: "long", day: "numeric" });
+  };
+  const renderCol = (label, w) => {
+    if (!w || !w.count) {
+      return `
+        <div class="anniv-col">
+          <div class="anniv-col-label">${escapeHtml(label)}</div>
+          <div style="color:var(--text-dim);font-size:12.5px;">No entries in this window.</div>
+        </div>`;
+    }
+    const emo = w.top_emotion ? w.top_emotion[0] : "neutral";
+    const emoColor = `var(--e-${emo})`;
+    const tagsHtml = (w.tags || []).slice(0, 4).map(([t, c]) =>
+      `<span class="anniv-tag">#${escapeHtml(t)} ${c > 1 ? `<span style="color:var(--text-dim);">·${c}</span>` : ""}</span>`).join("");
+    return `
+      <div class="anniv-col">
+        <div class="anniv-col-label">${escapeHtml(label)} · ${escapeHtml(fmtDate(w.date_center))}</div>
+        <div class="anniv-col-emo">
+          <span class="dot" style="background:${emoColor};"></span>
+          ${escapeHtml(emo)}
+          ${w.avg_intensity != null ? `<span style="color:var(--text-dim);font-size:12px;margin-left:4px;">${w.avg_intensity}/10</span>` : ""}
+        </div>
+        <div class="anniv-col-meta">${w.count} ${w.count === 1 ? "entry" : "entries"} in this window</div>
+        ${tagsHtml ? `<div class="anniv-tags">${tagsHtml}</div>` : ""}
+      </div>`;
+  };
+
+  const rf = r.reflection || {};
+  const cleanCite = s => (s || "").replace(/\[([a-z0-9]{4,8})\]/g, (m, id) =>
+    `<em title="entry ${id}">[${id}]</em>`);
+  const reflectHtml = (rf.same || rf.shifted || rf.avoiding || rf.becoming) ? `
+    <div class="anniv-reflect">
+      ${rf.same     ? `<div class="anniv-reflect-key">Same</div>     <div class="anniv-reflect-val">${cleanCite(escapeHtml(rf.same))}</div>` : ""}
+      ${rf.shifted  ? `<div class="anniv-reflect-key">Shifted</div>  <div class="anniv-reflect-val">${cleanCite(escapeHtml(rf.shifted))}</div>` : ""}
+      ${rf.avoiding ? `<div class="anniv-reflect-key">Avoiding</div> <div class="anniv-reflect-val">${cleanCite(escapeHtml(rf.avoiding))}</div>` : ""}
+      ${rf.becoming ? `<div class="anniv-reflect-key">Becoming</div> <div class="anniv-reflect-val">${cleanCite(escapeHtml(rf.becoming))}</div>` : ""}
+    </div>` : "";
+
+  const citeChips = (r.reflection_citations || []).slice(0, 5).map(c => `
+    <span class="cite-pill" data-id="${c.id}" title="${escapeHtml(c.title || "")} · ${escapeHtml(c.date)}">
+      <span class="dot" style="background:var(--e-${c.emotion});"></span>${escapeHtml(c.date)}
+    </span>`).join("");
+
+  host.innerHTML = `
+    <div class="anniv-head">
+      <div>
+        <div class="anniv-eyebrow">A month ago</div>
+        <div class="anniv-title">Then versus now — what shifted, what stayed</div>
+      </div>
+      <button class="btn btn-ghost" id="anniv-dismiss" title="Hide for today">Dismiss</button>
+    </div>
+    <div class="anniv-grid">
+      ${renderCol("Then", then)}
+      ${renderCol("Now",  now)}
+    </div>
+    ${reflectHtml}
+    ${citeChips ? `<div class="anniv-actions">${citeChips}</div>` : ""}
+  `;
+  host.style.display = "block";
+
+  // Click a citation pill to open that entry
+  host.querySelectorAll(".cite-pill").forEach(el => {
+    el.addEventListener("click", async () => {
+      const id = el.getAttribute("data-id");
+      try { const e = await api(`/journal/${id}`); openEntry(e); } catch {}
+    });
+  });
+  $("anniv-dismiss")?.addEventListener("click", () => {
+    host.style.display = "none";
+    // Mark dismissed for the day so it doesn't reappear on refresh
+    try {
+      const raw = localStorage.getItem(ANNIV_CACHE_KEY);
+      if (raw) {
+        const c = JSON.parse(raw); c.dismissed = true;
+        localStorage.setItem(ANNIV_CACHE_KEY, JSON.stringify(c));
+      }
+    } catch {}
+  });
+}
 
 // Voice input (Web Speech API)
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -2652,7 +2919,7 @@ function renderDailyChart(daily) {
     // Y grid + labels
     [2, 4, 6, 8, 10].forEach(v => {
       const y = PAD.top + chartH - (v / 10) * chartH;
-      ctx.strokeStyle = "rgba(167,139,250,0.1)";
+      ctx.strokeStyle = "rgba(148, 189, 154,0.1)";
       ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
       ctx.fillStyle = "rgba(168,164,199,0.55)";
@@ -2671,7 +2938,7 @@ function renderDailyChart(daily) {
     const yOf = p => PAD.top + chartH - (p.val / 10) * chartH;
 
     const grad = ctx.createLinearGradient(0, PAD.top, 0, H);
-    grad.addColorStop(0, "rgba(167,139,250,0.35)"); grad.addColorStop(1, "rgba(167,139,250,0)");
+    grad.addColorStop(0, "rgba(148, 189, 154,0.35)"); grad.addColorStop(1, "rgba(148, 189, 154,0)");
     ctx.beginPath(); ctx.moveTo(xOf(pts[0]), H);
     pts.forEach(p => ctx.lineTo(xOf(p), yOf(p)));
     ctx.lineTo(xOf(pts[pts.length - 1]), H); ctx.closePath();
@@ -2682,12 +2949,12 @@ function renderDailyChart(daily) {
       const a = pts[k - 1], b = pts[k], mx = (xOf(a) + xOf(b)) / 2;
       ctx.bezierCurveTo(mx, yOf(a), mx, yOf(b), xOf(b), yOf(b));
     }
-    ctx.strokeStyle = "#a78bfa"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
+    ctx.strokeStyle = "#94bd9a"; ctx.lineWidth = 2.5; ctx.lineJoin = "round"; ctx.stroke();
 
     pts.forEach((p, k) => {
       const r = highlightIdx === k ? 6 : 3.5;
       ctx.beginPath(); ctx.arc(xOf(p), yOf(p), r, 0, Math.PI * 2);
-      ctx.fillStyle = highlightIdx === k ? "#67e8f9" : "#a78bfa"; ctx.fill();
+      ctx.fillStyle = highlightIdx === k ? "#e8a486" : "#94bd9a"; ctx.fill();
       ctx.strokeStyle = "rgba(20,18,42,1)"; ctx.lineWidth = 2; ctx.stroke();
     });
   }
@@ -2711,7 +2978,7 @@ function renderDailyChart(daily) {
       tip.style.left = Math.min(rect.width - 130, Math.max(0, xPx - 60)) + "px";
       tip.style.top = "8px";
       tip.style.opacity = "1";
-      tip.innerHTML = `<div style="font-weight:600;color:#67e8f9;">${fmtDateShort(p.date)}</div><div>Intensity: <b>${p.val}</b>/10</div><div style="color:#a8a4c7;">${p.count} ${p.count === 1 ? "entry" : "entries"}</div>`;
+      tip.innerHTML = `<div style="font-weight:600;color:#e8a486;">${fmtDateShort(p.date)}</div><div>Intensity: <b>${p.val}</b>/10</div><div style="color:#a8a4c7;">${p.count} ${p.count === 1 ? "entry" : "entries"}</div>`;
     } else {
       draw(-1); tip.style.opacity = "0";
     }
@@ -2750,11 +3017,11 @@ function renderDailyChart(daily) {
 }
 
 function heatColor(count) {
-  if (!count) return "rgba(79,70,229,0.07)";
-  if (count === 1) return "rgba(99,102,241,0.28)";
-  if (count === 2) return "rgba(99,102,241,0.52)";
-  if (count === 3) return "rgba(99,102,241,0.76)";
-  return "#4f46e5";
+  if (!count) return "rgba(79, 124, 90,0.07)";
+  if (count === 1) return "rgba(106, 154, 114,0.28)";
+  if (count === 2) return "rgba(106, 154, 114,0.52)";
+  if (count === 3) return "rgba(106, 154, 114,0.76)";
+  return "#4f7c5a";
 }
 
 function renderHeatmap(heatmap) {
@@ -3254,8 +3521,8 @@ const graphState = {
 // A distinct, harmonious palette for cluster colours — 12 hues, all in a
 // similar saturation/lightness range so no single cluster screams.
 const CLUSTER_PALETTE = [
-  "#6366f1", "#10b981", "#f59e0b", "#ec4899",
-  "#06b6d4", "#a78bfa", "#f97316", "#14b8a6",
+  "#6a9a72", "#10b981", "#f59e0b", "#ec4899",
+  "#06b6d4", "#94bd9a", "#f97316", "#14b8a6",
   "#e11d48", "#3b82f6", "#84cc16", "#8b5cf6",
 ];
 const SOLO_COLOR = "#94a3b8";
@@ -3266,12 +3533,12 @@ function hexToRgb(hex) {
 }
 
 function emotionRgb(e) {
-  return hexToRgb(typeof emotionColor === "function" ? emotionColor(e) : "#6366f1");
+  return hexToRgb(typeof emotionColor === "function" ? emotionColor(e) : "#6a9a72");
 }
 
 function clusterColorFor(cid) {
   if (cid === "solo") return SOLO_COLOR;
-  return graphState.clusterColors.get(cid) || "#6366f1";
+  return graphState.clusterColors.get(cid) || "#6a9a72";
 }
 
 function initGraphSim() {
@@ -4061,7 +4328,7 @@ function renderMoodChart(m) {
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-top:4px;" id="music-chart-axis"></div>
     <div style="display:flex;gap:16px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:12px;color:var(--text-muted);flex-wrap:wrap;align-items:center;">
       <span><span style="display:inline-block;width:14px;height:3px;background:#1db954;border-radius:2px;vertical-align:middle;margin-right:5px;"></span>${degraded ? "Plays per day (Spotify)" : "Music valence (0 → 1)"}</span>
-      <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed #a78bfa;vertical-align:middle;margin-right:5px;"></span>Journal intensity (1 → 10)</span>
+      <span><span style="display:inline-block;width:14px;height:0;border-top:2px dashed #94bd9a;vertical-align:middle;margin-right:5px;"></span>Journal intensity (1 → 10)</span>
       <span style="margin-left:auto;">${corrText}</span>
     </div>`;
 
@@ -4099,12 +4366,12 @@ function renderMoodChart(m) {
     // Left Y axis: music. Right Y axis: journal.
     [0, 0.25, 0.5, 0.75, 1].forEach(v => {
       const y = PAD.top + cH * (1 - v);
-      ctx.strokeStyle = "rgba(79,70,229,0.08)"; ctx.lineWidth = 1;
+      ctx.strokeStyle = "rgba(79, 124, 90,0.08)"; ctx.lineWidth = 1;
       ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(W - PAD.right, y); ctx.stroke();
       ctx.font = "9px Inter,sans-serif";
       ctx.fillStyle = "rgba(29,185,84,0.75)"; ctx.textAlign = "right";
       ctx.fillText(degraded ? Math.round(v * musicMax) : v.toFixed(2), PAD.left - 4, y + 3);
-      ctx.fillStyle = "rgba(167,139,250,0.8)"; ctx.textAlign = "left";
+      ctx.fillStyle = "rgba(148, 189, 154,0.8)"; ctx.textAlign = "left";
       ctx.fillText(Math.round(1 + v * 9), W - PAD.right + 4, y + 3);
     });
 
@@ -4137,7 +4404,7 @@ function renderMoodChart(m) {
     }
 
     const musicPts = drawLine(musicSeries, "#1db954", false);
-    const journalPts = drawLine(journalSeries, "#a78bfa", true);
+    const journalPts = drawLine(journalSeries, "#94bd9a", true);
 
     // Hover: snap to nearest day index, show both values
     canvas.onmousemove = (ev) => {
@@ -4381,6 +4648,24 @@ async function renderSettings() {
     </div>
 
     <div class="settings-section">
+      <h3>Notifications</h3>
+      <div class="desc">
+        Innerbloom can nudge you locally — no server, no network. Notifications fire while this tab is open in the background. To get them when the tab is closed, "install" the app from your browser's address bar (Chrome / Edge / Safari support PWA install).
+      </div>
+      <div id="notif-permission-row" style="margin:8px 0 12px;"></div>
+      <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:10px;">
+        <label class="notif-row"><span><b>Morning prompt</b> · 8:30 am · "what do you actually want today?"</span><input type="checkbox" id="notif-morning" /></label>
+        <label class="notif-row"><span><b>Evening reflection</b> · 9:00 pm · only fires if you haven't written today</span><input type="checkbox" id="notif-evening" /></label>
+        <label class="notif-row"><span><b>Streak risk</b> · 10:30 pm · only if today is empty and your streak is &gt; 3 days</span><input type="checkbox" id="notif-streak" /></label>
+        <label class="notif-row"><span><b>Month-ago surfacing</b> · ~9:00 am · one nudge if a real "then-vs-now" landed today</span><input type="checkbox" id="notif-anniv" /></label>
+        <label class="notif-row"><span><b>Wellbeing alert</b> · when burnout / spiral level goes above "ok"</span><input type="checkbox" id="notif-wellbeing" /></label>
+      </div>
+      <div class="settings-row" style="justify-content:flex-end;">
+        <button class="btn" id="btn-notif-test">Send a test notification</button>
+      </div>
+    </div>
+
+    <div class="settings-section">
       <h3>Data</h3>
       <div class="desc">Your entries live locally in <code>data/journal.json</code>, chats in <code>data/chat.json</code>. Nothing ever leaves this machine (except Spotify API calls if you connect).</div>
       <div class="settings-row" style="justify-content:flex-end;">
@@ -4430,6 +4715,9 @@ async function renderSettings() {
     try { await api("/chat", { method: "DELETE" }); toast("Chat cleared."); }
     catch { toast("Couldn't clear.", "error"); }
   });
+
+  // Bind notification toggles + permission row
+  if (typeof Notif !== "undefined") Notif.bindSettings();
 }
 
 // =========================================================================
@@ -4573,9 +4861,245 @@ window.addEventListener("keydown", (e) => {
   }
   updateHealth();
   loadPrompt();
+  loadAnniversary();
   updateStreak();
   try { const s = await api("/spotify/status"); if (s.connected) $("spotify-nav-dot").style.display = "inline-block"; } catch {}
   setInterval(updateHealth, 30000);
+  Notif.start();
+})();
+
+// =========================================================================
+// NOTIFICATIONS
+// =========================================================================
+// Browser Notification API only — no service worker, no remote push. Means:
+//   - Fires while the tab is open (foregrounded or backgrounded).
+//   - Survives tab restore on Mac/Linux as long as the browser kept the tab.
+//   - To fire when the tab is closed, install as a PWA (Chrome/Edge handle
+//     installation; the local manifest below makes Innerbloom installable).
+//
+// Each notification kind has a "fire once per day" guard via localStorage.
+// The scheduler ticks every minute and emits whatever's due.
+const Notif = (() => {
+  const PREFS_KEY  = "innerbloom.notif.prefs";
+  const FIRED_KEY  = "innerbloom.notif.fired";
+
+  const DEFAULT_PREFS = {
+    morning:    false,
+    evening:    false,
+    streak:     false,
+    anniv:      false,
+    wellbeing:  false,
+  };
+
+  const SCHEDULE = {
+    morning:   { hour: 8,  minute: 30 },
+    evening:   { hour: 21, minute: 0  },
+    streak:    { hour: 22, minute: 30 },
+    anniv:     { hour: 9,  minute: 0  },
+    wellbeing: { hour: 19, minute: 0  },
+  };
+
+  function loadPrefs() {
+    try { return { ...DEFAULT_PREFS, ...(JSON.parse(localStorage.getItem(PREFS_KEY) || "{}")) }; }
+    catch { return { ...DEFAULT_PREFS }; }
+  }
+  function savePrefs(p) { try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {} }
+
+  function loadFired() {
+    try {
+      const raw = localStorage.getItem(FIRED_KEY);
+      const obj = raw ? JSON.parse(raw) : {};
+      const today = new Date().toISOString().slice(0, 10);
+      // Reset stale day-keys so each day starts fresh
+      if (obj._day !== today) return { _day: today };
+      return obj;
+    } catch { return { _day: new Date().toISOString().slice(0, 10) }; }
+  }
+  function markFired(kind) {
+    const f = loadFired();
+    f[kind] = true;
+    try { localStorage.setItem(FIRED_KEY, JSON.stringify(f)); } catch {}
+  }
+  function alreadyFiredToday(kind) {
+    return !!loadFired()[kind];
+  }
+
+  function permState() {
+    if (!("Notification" in window)) return "unsupported";
+    return Notification.permission;  // "default" | "granted" | "denied"
+  }
+
+  async function requestPerm() {
+    if (!("Notification" in window)) return "unsupported";
+    if (Notification.permission === "granted") return "granted";
+    try { return await Notification.requestPermission(); }
+    catch { return Notification.permission; }
+  }
+
+  function fire(kind, title, body, onclick) {
+    if (permState() !== "granted") return;
+    try {
+      const n = new Notification(title, {
+        body,
+        tag: `innerbloom-${kind}`,
+        icon: "data:image/svg+xml;utf8," + encodeURIComponent(
+          `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>
+             <rect width='32' height='32' rx='8' fill='#4f7c5a'/>
+             <path d='M16 25 V17 M16 21 C 19 20, 21 18, 21 15 M16 17 C 11 15, 9 10, 12 6 C 14 8, 16 11, 16 17 Z'
+                   stroke='white' stroke-width='1.6' fill='none' stroke-linecap='round' stroke-linejoin='round'/>
+           </svg>`),
+        silent: false,
+      });
+      n.onclick = () => {
+        window.focus();
+        if (onclick) onclick();
+        n.close();
+      };
+      markFired(kind);
+    } catch (e) { /* swallow */ }
+  }
+
+  async function hasEntryToday() {
+    try {
+      const r = await api("/journal?limit=1");
+      const e = (r.entries || [])[0];
+      if (!e) return false;
+      return (e.timestamp || "").slice(0, 10) === new Date().toISOString().slice(0, 10);
+    } catch { return false; }
+  }
+
+  async function evaluate() {
+    const prefs = loadPrefs();
+    if (Object.values(prefs).every(v => !v)) return;
+    if (permState() !== "granted") return;
+
+    const now = new Date();
+    const hm = now.getHours() * 60 + now.getMinutes();
+    const dueWindow = 10;  // fire if we're within 10 min after the scheduled time
+
+    const isDue = kind => {
+      const t = SCHEDULE[kind];
+      const tm = t.hour * 60 + t.minute;
+      return hm >= tm && hm <= tm + dueWindow;
+    };
+
+    // Morning
+    if (prefs.morning && isDue("morning") && !alreadyFiredToday("morning")) {
+      let prompt = "What do you actually want today?";
+      try { const r = await api("/prompt"); if (r.prompt) prompt = r.prompt; } catch {}
+      fire("morning", "Innerbloom — morning", prompt, () => switchView("write"));
+    }
+
+    // Evening — only if no entry today
+    if (prefs.evening && isDue("evening") && !alreadyFiredToday("evening")) {
+      if (!(await hasEntryToday())) {
+        fire("evening", "Innerbloom — evening", "Two sentences before bed?",
+          () => { switchView("write"); $("entry-text")?.focus(); });
+      } else {
+        markFired("evening");  // still mark to avoid retry loop
+      }
+    }
+
+    // Streak risk
+    if (prefs.streak && isDue("streak") && !alreadyFiredToday("streak")) {
+      try {
+        const s = await api("/stats");
+        if (s.streak_current > 3 && !(await hasEntryToday())) {
+          fire("streak", "Streak at risk", `You're at ${s.streak_current} days. Tap to keep it.`,
+            () => { switchView("write"); $("entry-text")?.focus(); });
+        } else { markFired("streak"); }
+      } catch {}
+    }
+
+    // Anniversary surfacing — only if /anniversary returns something today
+    if (prefs.anniv && isDue("anniv") && !alreadyFiredToday("anniv")) {
+      try {
+        const r = await api("/anniversary?days=30&spread=6&with_reflection=false");
+        if (r && r.available && r.then && r.then.count) {
+          fire("anniv", "A month ago you wrote…",
+            `${r.then.count} ${r.then.count === 1 ? "entry" : "entries"} from around then. See what's shifted.`,
+            () => switchView("write"));
+        } else { markFired("anniv"); }
+      } catch {}
+    }
+
+    // Wellbeing alert
+    if (prefs.wellbeing && isDue("wellbeing") && !alreadyFiredToday("wellbeing")) {
+      try {
+        const r = await api("/insights/wellbeing");
+        const bl = r?.burnout?.level || "ok";
+        const sl = r?.spiral?.level  || "ok";
+        const worst = (level => level === "high" ? 3 : level === "elevated" ? 2 : level === "watch" ? 1 : 0);
+        const top = Math.max(worst(bl), worst(sl));
+        if (top >= 1) {
+          const which = worst(bl) >= worst(sl) ? "burnout" : "spiral";
+          fire("wellbeing", `Wellbeing — ${which} level: ${which === "burnout" ? bl : sl}`,
+            "Worth a moment? Open Insights for the read.",
+            () => switchView("insights"));
+        } else { markFired("wellbeing"); }
+      } catch {}
+    }
+  }
+
+  function start() {
+    // Tick every 60s. evaluate() is cheap & guarded.
+    setInterval(evaluate, 60_000);
+    // Also run once at startup so a reopen after the scheduled minute still fires.
+    setTimeout(evaluate, 4000);
+  }
+
+  // --- Settings UI binding (called by renderSettings) ----------------
+  function bindSettings() {
+    const prefs = loadPrefs();
+    ["morning", "evening", "streak", "anniv", "wellbeing"].forEach(k => {
+      const el = document.getElementById(`notif-${k}`);
+      if (!el) return;
+      el.checked = !!prefs[k];
+      el.addEventListener("change", async () => {
+        if (el.checked && permState() !== "granted") {
+          const r = await requestPerm();
+          if (r !== "granted") {
+            el.checked = false;
+            renderPermissionRow();
+            return;
+          }
+        }
+        prefs[k] = el.checked;
+        savePrefs(prefs);
+        renderPermissionRow();
+      });
+    });
+
+    document.getElementById("btn-notif-test")?.addEventListener("click", async () => {
+      const r = await requestPerm();
+      if (r !== "granted") {
+        toast("Permission denied. Allow notifications in your browser settings.", "error");
+        renderPermissionRow();
+        return;
+      }
+      fire("__test", "Innerbloom — test", "If you can read this, notifications work.");
+    });
+
+    renderPermissionRow();
+  }
+
+  function renderPermissionRow() {
+    const host = document.getElementById("notif-permission-row");
+    if (!host) return;
+    const s = permState();
+    const palette = {
+      unsupported: { c: "var(--text-muted)", t: "Your browser doesn't support notifications." },
+      default:     { c: "var(--warning)",    t: "Permission not yet requested — toggling any option below will ask." },
+      granted:     { c: "var(--success)",    t: "Permission granted. You're good." },
+      denied:      { c: "var(--danger)",     t: "Permission denied. Reset it in your browser's site settings." },
+    }[s];
+    host.innerHTML = `<span style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:${palette.c};">
+      <span style="width:8px;height:8px;border-radius:50%;background:${palette.c};box-shadow:0 0 0 3px rgba(0,0,0,0.04);"></span>
+      ${escapeHtml(palette.t)}
+    </span>`;
+  }
+
+  return { start, bindSettings, fire };
 })();
 </script>
 </body>
