@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>Reflect — Your AI Journal</title>
+<title>Innerbloom — Your AI Journal</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fraunces:ital,wght@0,400;0,500;0,600;1,400;1,600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -1262,7 +1262,7 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
       </div>
       <div class="brand-text">
-        <span class="title">Reflect</span>
+        <span class="title">Innerbloom</span>
         <span class="sub">AI Journal</span>
       </div>
     </div>
@@ -1407,7 +1407,7 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
           <div class="chat-feed" id="chat-feed">
             <div class="chat-welcome" id="chat-welcome">
               <h3>Talk to your journal</h3>
-              <p>Ask Reflect about your patterns, moods, or past thoughts. It cites the entries it drew from — click a pill to jump to one. Nothing leaves your machine.</p>
+              <p>Ask Innerbloom about your patterns, moods, or past thoughts. It cites the entries it drew from — click a pill to jump to one. Nothing leaves your machine.</p>
               <div class="suggest-wrap">
                 <div class="suggest" data-q="How have I been feeling this week?">How have I been feeling this week?</div>
                 <div class="suggest" data-q="What themes come up most in my writing?">Recurring themes</div>
@@ -1664,11 +1664,11 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
 // CONFIG + UTILITIES
 // =========================================================================
 // Backend base URL. Matches the uvicorn default in the README (port 5000).
-// Override at runtime via `window.REFLECT_API` before this script loads.
-const API = (window.REFLECT_API || "http://127.0.0.1:5000").replace(/\/$/, "");
-const DRAFT_KEY = "reflect.draft";
-const SPOTIFY_VERIFIER_KEY = "reflect.spotify.verifier";
-const SPOTIFY_REDIRECT_KEY = "reflect.spotify.redirect";
+// Override at runtime via `window.INNERBLOOM_API` before this script loads.
+const API = (window.INNERBLOOM_API || window.REFLECT_API || "http://127.0.0.1:5000").replace(/\/$/, "");
+const DRAFT_KEY = "innerbloom.draft";
+const SPOTIFY_VERIFIER_KEY = "innerbloom.spotify.verifier";
+const SPOTIFY_REDIRECT_KEY = "innerbloom.spotify.redirect";
 
 const $ = (id) => document.getElementById(id);
 const $$ = (sel) => document.querySelectorAll(sel);
@@ -1740,7 +1740,7 @@ const TITLES = {
   settings: () => ["Settings", "Connections, preferences, data"],
 };
 
-const VIEW_KEY = "reflect.activeView";
+const VIEW_KEY = "innerbloom.activeView";
 function switchView(view) {
   $$(".view").forEach(v => v.classList.remove("active"));
   $$(".nav-item").forEach(n => n.classList.remove("active"));
@@ -2170,8 +2170,8 @@ const chatInput = $("chat-input");
 let chatHistoryLoaded = false;
 
 // --- mode + personality state (persisted) ----------------------------------
-let chatMode = localStorage.getItem("reflect.chatMode") || "journal";
-let chatPersona = localStorage.getItem("reflect.chatPersona") || "honest_coach";
+let chatMode = localStorage.getItem("innerbloom.chatMode") || "journal";
+let chatPersona = localStorage.getItem("innerbloom.chatPersona") || "honest_coach";
 
 function applyChatMode() {
   $$(".mode-switch button").forEach(b => {
@@ -2189,13 +2189,13 @@ function applyPersona() {
 $$(".mode-switch button").forEach(b => {
   b.addEventListener("click", () => {
     chatMode = b.dataset.mode;
-    localStorage.setItem("reflect.chatMode", chatMode);
+    localStorage.setItem("innerbloom.chatMode", chatMode);
     applyChatMode();
   });
 });
 $("persona-select")?.addEventListener("change", (e) => {
   chatPersona = e.target.value;
-  localStorage.setItem("reflect.chatPersona", chatPersona);
+  localStorage.setItem("innerbloom.chatPersona", chatPersona);
 });
 applyChatMode();
 applyPersona();
@@ -4351,7 +4351,7 @@ async function renderSettings() {
     <div class="settings-section">
       <h3>Spotify integration</h3>
       <div class="desc">
-        Spotify reveals something about mental state — the valence (musical positivity), energy, and tempo of what you choose often mirrors what you're not writing down. Reflect correlates the two.
+        Spotify reveals something about mental state — the valence (musical positivity), energy, and tempo of what you choose often mirrors what you're not writing down. Innerbloom correlates the two.
         <br><br>
         <b>One-time setup</b>:
         <ol style="padding-left:20px;margin-top:6px;line-height:1.75;">
@@ -4401,7 +4401,7 @@ async function renderSettings() {
 
     <div class="settings-section">
       <h3>Model</h3>
-      <div class="desc">Running locally via Ollama. Current model: <code>${escapeHtml(status.model || "llama3.2:3b")}</code>. Change via <code>REFLECT_MODEL</code> env var.</div>
+      <div class="desc">Running locally via Ollama. Current model: <code>${escapeHtml(status.model || "llama3.2:3b")}</code>. Change via <code>INNERBLOOM_MODEL</code> env var.</div>
     </div>
   `;
 

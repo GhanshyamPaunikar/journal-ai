@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-seed_journal.py — 40-day fake journal for Reflect
+seed_journal.py — 40-day fake journal for Innerbloom
 
 Writes directly to data/journal.json with analysis pre-filled (valid emotions,
 intensities, tags, themes) so we don't have to wait on llama3.2:3b for 40
@@ -23,7 +23,7 @@ import uuid
 from datetime import datetime, timedelta
 
 DATA_DIR = os.environ.get(
-    "REFLECT_DATA_DIR",
+    "INNERBLOOM_DATA_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
 )
 os.makedirs(DATA_DIR, exist_ok=True)

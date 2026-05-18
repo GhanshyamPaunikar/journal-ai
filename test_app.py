@@ -1,5 +1,5 @@
 """
-Backtest for Reflect backend.
+Backtest for Innerbloom backend.
 
 Runs end-to-end against FastAPI's TestClient with Ollama + Spotify mocked.
 Every route is exercised; stats/retrieval are validated with known data.
@@ -10,16 +10,16 @@ from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
 # Fresh data dir per run
-TMP = tempfile.mkdtemp(prefix="reflect_test_")
-os.environ["REFLECT_DATA_DIR"] = TMP
-os.environ["REFLECT_MODEL"] = "test-model"
+TMP = tempfile.mkdtemp(prefix="innerbloom_test_")
+os.environ["INNERBLOOM_DATA_DIR"] = TMP
+os.environ["INNERBLOOM_MODEL"] = "test-model"
 
 # Import after env is set
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import app as reflect_app  # noqa: E402
+import app as innerbloom_app  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-client = TestClient(reflect_app.app)
+client = TestClient(innerbloom_app.app)
 
 # ---------- tiny helpers ----------
 
@@ -60,7 +60,7 @@ def fake_llama(prompt, system="", temperature=0.7, timeout=180):
     return "Mocked reply."
 
 def fake_llama_stream(prompt, system="", temperature=0.7):
-    for token in ["Hello", " from", " Reflect", ".", " This", " references", " [cite:", "aaaaaaaa", "]."]:
+    for token in ["Hello", " from", " Innerbloom", ".", " This", " references", " [cite:", "aaaaaaaa", "]."]:
         yield token
 
 # ---------- Spotify mocks ----------
@@ -136,29 +136,29 @@ def test_unit_helpers():
     section("Unit helpers")
 
     # tokenize
-    toks = reflect_app.tokenize("I had a great day at WORK, learning python!")
+    toks = innerbloom_app.tokenize("I had a great day at WORK, learning python!")
     check("tokenize drops stopwords", "had" not in toks and "great" in toks,
           f"got {toks}")
     check("tokenize lowercases", "work" in toks, f"got {toks}")
 
     # extract_json — plain
-    j = reflect_app.extract_json('{"a": 1}')
+    j = innerbloom_app.extract_json('{"a": 1}')
     check("extract_json plain", j == {"a": 1}, str(j))
 
     # extract_json — with prose wrapper
-    j = reflect_app.extract_json('Sure! {"a": 2, "b": "c"} — hope that helps')
+    j = innerbloom_app.extract_json('Sure! {"a": 2, "b": "c"} — hope that helps')
     check("extract_json extracts from prose", j == {"a": 2, "b": "c"}, str(j))
 
     # extract_json — trailing comma (common LLM slip)
-    j = reflect_app.extract_json('{"a": 1, "b": 2,}')
+    j = innerbloom_app.extract_json('{"a": 1, "b": 2,}')
     check("extract_json tolerant of trailing comma", j == {"a": 1, "b": 2}, str(j))
 
     # extract_json — single quotes
-    j = reflect_app.extract_json("{'a': 1, 'b': 2}")
+    j = innerbloom_app.extract_json("{'a': 1, 'b': 2}")
     check("extract_json tolerant of single quotes", j == {"a": 1, "b": 2}, str(j))
 
     # extract_json — malformed
-    j = reflect_app.extract_json("totally not json at all")
+    j = innerbloom_app.extract_json("totally not json at all")
     check("extract_json returns None on garbage", j is None)
 
     # score_entry + retrieve_relevant
@@ -170,7 +170,7 @@ def test_unit_helpers():
         {"id": "c", "text": "Ate pasta and relaxed", "tags": ["food", "rest"], "themes": [],
          "timestamp": (datetime.now() - timedelta(days=1)).isoformat()},
     ]
-    hits = reflect_app.retrieve_relevant(entries, "pasta", k=2)
+    hits = innerbloom_app.retrieve_relevant(entries, "pasta", k=2)
     check("retrieve finds pasta entries", any(e["id"] == "a" for e in hits) and any(e["id"] == "c" for e in hits),
           f"got {[e['id'] for e in hits]}")
     check("retrieve includes recent entry as grounding", any(e["id"] == "a" for e in hits))
@@ -178,31 +178,31 @@ def test_unit_helpers():
     # streak
     today = datetime.now().date()
     e = [{"timestamp": (datetime.now() - timedelta(days=i)).isoformat()} for i in [0, 1, 2, 5, 6]]
-    s = reflect_app.compute_streak(e)
+    s = innerbloom_app.compute_streak(e)
     check("streak current=3", s["current"] == 3, str(s))
     check("streak longest>=3", s["longest"] >= 3, str(s))
 
     # streak — empty
-    s = reflect_app.compute_streak([])
+    s = innerbloom_app.compute_streak([])
     check("streak empty=0/0", s == {"current": 0, "longest": 0})
 
     # streak — yesterday still counts toward current streak
     e = [{"timestamp": (datetime.now() - timedelta(days=i)).isoformat()} for i in [1, 2, 3]]
-    s = reflect_app.compute_streak(e)
+    s = innerbloom_app.compute_streak(e)
     check("streak honours yesterday start", s["current"] == 3, str(s))
 
     # format_context returns citation-ready ids
-    ctx = reflect_app.format_context([{"id": "abcd1234-xxxx", "text": "hi", "timestamp": "2024-01-01T00:00:00",
+    ctx = innerbloom_app.format_context([{"id": "abcd1234-xxxx", "text": "hi", "timestamp": "2024-01-01T00:00:00",
                                        "emotion": "calm", "tags": ["x"]}])
     check("format_context embeds short id", "id=abcd1234" in ctx, ctx[:80])
 
     # extract_citations
     rels = [{"id": "aaaaaaaa-1111", "title": "T", "timestamp": "2024-01-01T00:00:00", "emotion": "happy"}]
-    got = reflect_app.extract_citations("Great thinking [cite:aaaaaaaa]", rels)
+    got = innerbloom_app.extract_citations("Great thinking [cite:aaaaaaaa]", rels)
     check("extract_citations resolves short id", len(got) == 1 and got[0]["id"] == "aaaaaaaa-1111", str(got))
 
     # clean_reply strips tokens
-    cleaned = reflect_app.clean_reply("Hi [cite:abc12345]. Nice.")
+    cleaned = innerbloom_app.clean_reply("Hi [cite:abc12345]. Nice.")
     check("clean_reply strips [cite:]", "[cite:" not in cleaned and "Hi" in cleaned, cleaned)
 
 
@@ -213,7 +213,7 @@ def test_unit_helpers():
 def test_journal_routes():
     section("Journal routes")
 
-    with patch.object(reflect_app, "call_llama", side_effect=fake_llama):
+    with patch.object(innerbloom_app, "call_llama", side_effect=fake_llama):
         r = client.post("/save", json={"text": "I had a great day at work today.", "mood": 7})
         check("POST /save 200", r.status_code == 200, r.text[:120])
         entry_id = r.json()["entry"]["id"]
@@ -266,16 +266,16 @@ def test_journal_routes():
 def test_chat_routes():
     section("Chat routes")
     # Seed an entry so retrieval has something
-    with patch.object(reflect_app, "call_llama", side_effect=fake_llama):
+    with patch.object(innerbloom_app, "call_llama", side_effect=fake_llama):
         client.post("/save", json={"text": "Thinking about pasta and evenings at home."})
 
     # Force the fake reply to include a [cite:xxxx] matching a real entry id
-    entries = reflect_app.load_file(reflect_app.JOURNAL_FILE)
+    entries = innerbloom_app.load_file(innerbloom_app.JOURNAL_FILE)
     short_id = entries[-1]["id"][:8]
     def fake_llama_with_cite(prompt, system="", temperature=0.7, timeout=180):
         return f"A calm thought grounded in your last entry. [cite:{short_id}]"
 
-    with patch.object(reflect_app, "call_llama", side_effect=fake_llama_with_cite):
+    with patch.object(innerbloom_app, "call_llama", side_effect=fake_llama_with_cite):
         r = client.post("/chat", json={"message": "How do I feel about pasta?"})
         check("POST /chat 200", r.status_code == 200)
         body = r.json()
@@ -291,7 +291,7 @@ def test_chat_routes():
         check("GET /chat returns history", r.status_code == 200 and len(r.json()["messages"]) >= 1)
 
     # Streaming — just assert we get bytes back that include manifest + reply
-    with patch.object(reflect_app, "call_llama_stream", side_effect=fake_llama_stream):
+    with patch.object(innerbloom_app, "call_llama_stream", side_effect=fake_llama_stream):
         with client.stream("POST", "/chat/stream", json={"message": "Any other pasta thoughts?"}) as resp:
             chunks = b""
             for c in resp.iter_bytes():
@@ -312,7 +312,7 @@ def test_chat_routes():
 
 def test_insights():
     section("Insights / reflect / connections / prompts / search / export")
-    with patch.object(reflect_app, "call_llama", side_effect=fake_llama):
+    with patch.object(innerbloom_app, "call_llama", side_effect=fake_llama):
         # Seed a handful of entries
         for t in [
             "I walked today and felt calm after a busy morning.",
@@ -338,7 +338,7 @@ def test_insights():
         check("GET /monthly-review 200", r.status_code == 200)
 
         # reflect on latest entry
-        latest_id = reflect_app.load_file(reflect_app.JOURNAL_FILE)[-1]["id"]
+        latest_id = innerbloom_app.load_file(innerbloom_app.JOURNAL_FILE)[-1]["id"]
         r = client.get(f"/reflect/{latest_id}")
         check("GET /reflect/{id} 200", r.status_code == 200
               and len(r.json()["questions"]) == 3, str(r.json()))
@@ -359,7 +359,7 @@ def test_insights():
 
         r = client.get("/export")
         check("GET /export 200 markdown", r.status_code == 200
-              and "# Reflect" in r.text)
+              and "# Innerbloom" in r.text)
 
 
 # =========================================================================
@@ -417,7 +417,7 @@ def test_spotify():
     # mood + insight — uses the mocked getters plus the real LLM mock
     with patch("app.requests.get", side_effect=fake_spotify_get), \
          patch("app.requests.post", side_effect=fake_spotify_post), \
-         patch.object(reflect_app, "call_llama", side_effect=fake_llama):
+         patch.object(innerbloom_app, "call_llama", side_effect=fake_llama):
         r = client.get("/spotify/mood")
         check("GET /spotify/mood 200", r.status_code == 200)
         m = r.json()

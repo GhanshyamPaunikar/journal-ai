@@ -1,6 +1,6 @@
 """
-Reflect — Advanced AI Journal Backend
--------------------------------------
+Innerbloom — Advanced AI Journal Backend
+----------------------------------------
 FastAPI + Ollama (llama3.2:3b) + Spotify integration
 
 Features:
@@ -41,14 +41,14 @@ from collections import Counter, defaultdict
 # Config
 # ---------------------------------------------------------------------------
 
-MODEL = os.environ.get("REFLECT_MODEL", "llama3.2:3b")
-EMBED_MODEL = os.environ.get("REFLECT_EMBED_MODEL", "nomic-embed-text")
-OLLAMA_URL = os.environ.get("REFLECT_OLLAMA_URL", "http://localhost:11434/api/generate")
-OLLAMA_TAGS_URL = os.environ.get("REFLECT_OLLAMA_TAGS_URL", "http://localhost:11434/api/tags")
-OLLAMA_EMBED_URL = os.environ.get("REFLECT_OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
+MODEL = os.environ.get("INNERBLOOM_MODEL", "llama3.2:3b")
+EMBED_MODEL = os.environ.get("INNERBLOOM_EMBED_MODEL", "nomic-embed-text")
+OLLAMA_URL = os.environ.get("INNERBLOOM_OLLAMA_URL", "http://localhost:11434/api/generate")
+OLLAMA_TAGS_URL = os.environ.get("INNERBLOOM_OLLAMA_TAGS_URL", "http://localhost:11434/api/tags")
+OLLAMA_EMBED_URL = os.environ.get("INNERBLOOM_OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
 
 DATA_DIR = os.environ.get(
-    "REFLECT_DATA_DIR",
+    "INNERBLOOM_DATA_DIR",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data"),
 )
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -71,7 +71,7 @@ wanted tell told said say says like liked way ways thing things time today
 yesterday tomorrow day days week weeks month months year years
 """.split())
 
-app = FastAPI(title="Reflect — AI Journal")
+app = FastAPI(title="Innerbloom — AI Journal")
 
 app.add_middleware(
     CORSMiddleware,
@@ -637,7 +637,7 @@ def build_context(message: str, memory: Dict[str, List[dict]]) -> str:
             date_s = (t.get("timestamp") or "")[:10]
             block.append(f"[{date_s}]")
             block.append(f"User: {_truncate(t.get('user',''), 240)}")
-            block.append(f"Reflect: {_truncate(t.get('ai',''), 240)}")
+            block.append(f"Innerbloom: {_truncate(t.get('ai',''), 240)}")
             block.append("")
         parts.append("\n".join(block).rstrip())
 
@@ -651,7 +651,7 @@ def build_context(message: str, memory: Dict[str, List[dict]]) -> str:
     if pattern_lines:
         parts.append("=== Known Patterns About User ===\n" + "\n".join(pattern_lines))
 
-    parts.append(f"=== Current Message ===\n{message}\n\nReflect:")
+    parts.append(f"=== Current Message ===\n{message}\n\nInnerbloom:")
     return "\n\n".join(parts)
 
 
@@ -774,17 +774,17 @@ def delete_entry(entry_id: str):
 
 PERSONALITIES = {
     "honest_coach": (
-        "You are Reflect in 'brutally honest coach' mode. Be direct, clear, and unsparing — "
+        "You are Innerbloom in 'brutally honest coach' mode. Be direct, clear, and unsparing — "
         "name the gap between what the user says and what they do. Skip motivational fluff. "
         "Care shows up as honesty, not encouragement. Short sentences. No hedging."
     ),
     "calm_therapist": (
-        "You are Reflect in 'calm therapist' mode. Be warm, patient, and grounded. "
+        "You are Innerbloom in 'calm therapist' mode. Be warm, patient, and grounded. "
         "Reflect feelings back, validate before redirecting, ask one gentle question at a time. "
         "Never diagnose or pathologize. Use plain language."
     ),
     "analytical_observer": (
-        "You are Reflect in 'analytical observer' mode. Be precise, neutral, evidence-based. "
+        "You are Innerbloom in 'analytical observer' mode. Be precise, neutral, evidence-based. "
         "Quote specific entries when claiming a pattern. Distinguish observation from inference. "
         "Avoid emotional framing unless the user asks for it."
     ),
@@ -1182,7 +1182,7 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
         "Now draft your reply. Cite specific entries with [cite:id] using the "
         "short id from the brackets above. If the observations don't fully "
         "answer the question, say what's missing — don't invent.\n\n"
-        "Reflect:"
+        "Innerbloom:"
     )
 
 
@@ -1726,7 +1726,7 @@ def search(q: str):
 def export_markdown():
     entries = load_file(JOURNAL_FILE)
     entries.sort(key=lambda e: e.get("timestamp", ""))
-    lines = ["# Reflect — Journal Export\n"]
+    lines = ["# Innerbloom — Journal Export\n"]
     for e in entries:
         d = e.get("timestamp", "")[:10]
         title = e.get("title", "") or e.get("summary", "")
@@ -3483,7 +3483,7 @@ def get_graph(limit: int = 250, min_weight: float = 0.18):
 
 @app.get("/")
 def root():
-    return {"app": "Reflect", "model": MODEL, "status": "ok"}
+    return {"app": "Innerbloom", "model": MODEL, "status": "ok"}
 
 
 @app.get("/health")

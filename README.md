@@ -1,10 +1,10 @@
 <div align="center">
 
-# Reflect — Advanced AI Journal
+# Innerbloom — Advanced AI Journal
 
 ### An AI journal that understands your patterns, emotions, and contradictions — running entirely on your machine.
 
-Journaling is powerful when someone reads what you write—finds patterns, notices contradictions, and reflects them back to you. **Reflect** does that using local LLMs, semantic search, and real-time reasoning. Nothing leaves your machine.
+Journaling is powerful when someone reads what you write—finds patterns, notices contradictions, and reflects them back to you. **Innerbloom** does that using local LLMs, semantic search, and real-time reasoning. Nothing leaves your machine.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/fastapi-0.110+-teal.svg)](https://fastapi.tiangelo.com/)
@@ -109,8 +109,8 @@ All insights are stored in `data/insights.json` for review history.
 ### 1. Clone & Install
 
 ```bash
-git clone https://github.com/yourusername/reflect.git
-cd reflect
+git clone https://github.com/yourusername/innerbloom.git
+cd innerbloom
 
 pip install -r requirements.txt
 ```
@@ -137,7 +137,7 @@ The server will start on `http://localhost:5000`. All your journal data lives in
 In another terminal:
 
 ```bash
-cd reflect
+cd innerbloom
 python -m http.server 8000
 # Open http://localhost:8000/index.html
 ```
@@ -187,27 +187,27 @@ That's it. You're ready to journal.
 
 ```bash
 # Model
-REFLECT_MODEL=llama3.2:3b
+INNERBLOOM_MODEL=llama3.2:3b
 
 # Embeddings for semantic search
-REFLECT_EMBED_MODEL=nomic-embed-text
+INNERBLOOM_EMBED_MODEL=nomic-embed-text
 
 # Ollama endpoints (defaults to localhost)
-REFLECT_OLLAMA_URL=http://localhost:11434/api/generate
-REFLECT_OLLAMA_EMBED_URL=http://localhost:11434/api/embeddings
+INNERBLOOM_OLLAMA_URL=http://localhost:11434/api/generate
+INNERBLOOM_OLLAMA_EMBED_URL=http://localhost:11434/api/embeddings
 
 # Data storage
-REFLECT_DATA_DIR=./data
+INNERBLOOM_DATA_DIR=./data
 ```
 
 ### Use a Different Model
 
 ```bash
 # Bigger model for more nuanced analysis
-REFLECT_MODEL=llama3.1:8b uvicorn app:app --port 5000
+INNERBLOOM_MODEL=llama3.1:8b uvicorn app:app --port 5000
 
 # Mistral for speed
-REFLECT_MODEL=mistral:7b uvicorn app:app --port 5000
+INNERBLOOM_MODEL=mistral:7b uvicorn app:app --port 5000
 ```
 
 Pull any model first: `ollama pull <name>`
@@ -318,7 +318,7 @@ Tests cover:
 ✅ **100% private by default**
 - No cloud, no account, no telemetry
 - Entries live in `./data/` on your machine only
-- Reflect never calls home
+- Innerbloom never calls home
 
 ✅ **Internet requests:**
 - `localhost:11434` (Ollama, local)
@@ -349,11 +349,11 @@ rm -rf data/
 
 1. Go to [developer.spotify.com/dashboard](https://developer.spotify.com/dashboard)
 2. Create an app and copy the **Client ID**
-3. In Reflect's **Settings**, paste the Client ID and note the redirect URI shown
+3. In Innerbloom's **Settings**, paste the Client ID and note the redirect URI shown
 4. Add that redirect URI to your Spotify app's settings (must match exactly)
 5. Click **Connect Spotify** and follow the OAuth flow
 
-Reflect uses PKCE (no client secrets), so your Spotify token is stored locally and auto-refreshes.
+Innerbloom uses PKCE (no client secrets), so your Spotify token is stored locally and auto-refreshes.
 
 ---
 
@@ -365,13 +365,13 @@ Found a bug? Have a feature idea? Open an issue or PR. All contributions welcome
 
 ## License
 
-**MIT** — Build, modify, and use Reflect however you want. No restrictions.
+**MIT** — Build, modify, and use Innerbloom however you want. No restrictions.
 
 ---
 
 <div align="center">
 
-*Reflect is built on the idea that the best person to understand your mind is you—with a little help from local AI.*
+*Innerbloom is built on the idea that the best person to understand your mind is you—with a little help from local AI.*
 
 **Made with 🤖 + ❤️ for clearer thinking.**
 
