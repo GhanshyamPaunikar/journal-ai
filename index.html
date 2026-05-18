@@ -1204,6 +1204,47 @@ body {
 .msc-val { font-family: 'Fraunces', serif; font-size: 26px; font-weight: 600; color: var(--accent); line-height: 1; }
 .msc-sub { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; }
 
+/* === Recent listening card === */
+.recent-listening { padding: 22px 24px; }
+.recent-listening .rl-stats {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+}
+@media (max-width: 560px) { .recent-listening .rl-stats { grid-template-columns: 1fr; gap: 10px; } }
+.recent-listening .rl-stat { display: flex; flex-direction: column; }
+.recent-listening .rl-val {
+  font-family: 'Fraunces', serif; font-size: 28px; font-weight: 600;
+  color: var(--accent-deep); line-height: 1;
+}
+.recent-listening .rl-val.rl-time { font-size: 18px; color: var(--text); }
+.recent-listening .rl-label {
+  font-size: 11px; color: var(--text-muted); margin-top: 4px;
+  text-transform: uppercase; letter-spacing: 0.10em; font-weight: 600;
+}
+.artist-row {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.artist-chip {
+  display: flex; align-items: center; gap: 10px;
+  padding: 8px 10px; background: var(--bg-1); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.artist-chip:hover { border-color: var(--border-strong); background: var(--surface-hover); }
+.artist-chip img, .artist-chip .art-fallback {
+  width: 36px; height: 36px; border-radius: 6px; flex-shrink: 0;
+  object-fit: cover; background: var(--bg-2);
+}
+.artist-info { flex: 1; min-width: 0; }
+.artist-name {
+  font-size: 13px; font-weight: 600; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.artist-plays { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+
+/* === Daily mood bars === */
+.daily-bar:hover .daily-bar-bar { opacity: 0.82; }
+
 .track-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .track {
   display: flex; gap: 10px; align-items: center;
@@ -4142,22 +4183,23 @@ async function loadMusic() {
         </div>
       </div>
 
-      <div class="section-title"><h3>Mood of what you're listening to</h3><span class="sub">derived from artist genres · 50 most recent plays</span></div>
+      <div class="section-title"><h3>Your recent listening</h3><span class="sub">what Spotify knows about you · 50 most recent plays</span></div>
+      <div id="recent-listening-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+
+      <div class="section-title"><h3>Music &amp; mood, day by day</h3><span class="sub">last 30 days · honest about gaps</span></div>
+      <div class="mood-quadrant" id="daily-mood"><div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div></div>
+
+      <div class="section-title"><h3>Mood of what you're playing</h3><span class="sub">when Spotify gives us genre data</span></div>
       <div class="mood-quadrant" id="mood-quadrant">
         <div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div>
-      </div>
-
-      <div class="section-title"><h3>Music ↔ Journal mood over time</h3><span class="sub">valence vs journal intensity · last 30 days</span></div>
-      <div class="mood-chart" id="mood-chart">
-        <div style="color:var(--text-muted);font-size:13px;">Loading…</div>
       </div>
 
       <div class="section-title"><h3>AI reflection</h3>
         <div class="section-title-actions"><button class="btn btn-primary" id="btn-music-insight">Interpret this</button></div>
       </div>
-      <div class="analysis-box" id="music-insight">Click "Interpret this" to have Llama read your musical mood against your journal.</div>
+      <div class="analysis-box" id="music-insight">Click "Interpret this" to have Llama read your listening against your journal.</div>
 
-      <div class="section-title"><h3>When you listen</h3><span class="sub">hour-of-day rhythm</span></div>
+      <div class="section-title"><h3>When you listen</h3><span class="sub">hour-of-day &amp; day-of-week rhythm</span></div>
       <div class="card" id="listening-pattern-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
 
       <div class="section-title"><h3>Recently played</h3></div>
@@ -4179,8 +4221,9 @@ async function loadMusic() {
     $("btn-music-insight").addEventListener("click", runMusicInsight);
     $("top-range").addEventListener("change", loadTopTracks);
 
+    loadRecentListening();
+    loadDailyMood();
     loadMoodQuadrant();
-    loadMoodChart();
     loadListeningPattern();
     loadRecentTracks();
     loadTopTracks();
@@ -4216,9 +4259,24 @@ function renderMoodQuadrant(data) {
   const tracks = (data.tracks || []).filter(t => t.valence != null && t.energy != null);
 
   if (!tracks.length) {
+    // Spotify deprecated genre tags for new apps in late 2024 — many
+    // artists come back with empty genres. Be honest about it instead of
+    // pretending the user just hasn't played enough music.
+    const found = data.discovered_genres || [];
+    const why = found.length === 0
+      ? `Spotify isn't returning genre tags for the artists you're playing (this is a Nov 2024 platform change that affects newer apps). The mood quadrant needs genres to place songs.`
+      : `Only ${found.length} of your artists' genres are in our mood table — not enough for a confident read yet.`;
     host.innerHTML = `
-      <div style="color:var(--text-muted);font-size:13px;padding:8px;">
-        We couldn't match any artist genres to our mood table yet — play a few more tracks and re-check.
+      <div style="background:rgba(196, 126, 42, 0.07);border:1px solid rgba(196, 126, 42, 0.22);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--text);">
+        <div style="font-weight:600;margin-bottom:6px;">Can't place your music on the mood plane right now.</div>
+        <div style="color:var(--text-muted);">${escapeHtml(why)}</div>
+        ${found.length ? `
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
+            <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:8px;">What we did find</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;">
+              ${found.slice(0, 10).map(g => `<span class="anniv-tag">${escapeHtml(g.name)} <span style="color:var(--text-dim);">·${g.count}</span></span>`).join("")}
+            </div>
+          </div>` : ""}
       </div>`;
     return;
   }
@@ -4398,15 +4456,150 @@ function drawMoodScatter(tracks) {
   canvas.onmouseleave = () => { tip.style.opacity = "0"; };
 }
 
-async function loadMoodChart() {
+// --- Recent listening summary (replaces the misleading stat strip) ---
+function _fmtRelativeDate(iso) {
+  if (!iso) return "—";
   try {
-    const m = await api("/spotify/mood");
-    renderMoodChart(m);
+    const then = new Date(iso); const now = new Date();
+    const mins = Math.floor((now - then) / 60000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return mins + "m ago";
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return hours + "h ago";
+    const days = Math.floor(hours / 24);
+    if (days === 1) return "yesterday";
+    if (days < 7) return days + "d ago";
+    return then.toLocaleDateString([], { month: "short", day: "numeric" });
+  } catch { return iso.slice(0, 10); }
+}
+
+async function loadRecentListening() {
+  const host = $("recent-listening-card");
+  try {
+    const d = await api("/spotify/genre-mood");
+    const top = d.top_artists || [];
+    const winLast = d.listening_window?.last;
+    const activeDays = d.listening_window?.active_days || 0;
+    const playCount = d.play_count || 0;
+    const genres = d.discovered_genres || [];
+
+    const topRow = top.slice(0, 6).map(a => `
+      <div class="artist-chip" title="${a.plays} plays">
+        ${a.image ? `<img src="${a.image}" alt="">` : `<div class="art-fallback"></div>`}
+        <div class="artist-info">
+          <div class="artist-name">${escapeHtml(a.name)}</div>
+          <div class="artist-plays">${a.plays} ${a.plays === 1 ? "play" : "plays"}</div>
+        </div>
+      </div>
+    `).join("");
+
+    const genreLine = genres.length ? `
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+        <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:8px;">Top genres in your music</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${genres.slice(0, 8).map(g => `<span class="anniv-tag">${escapeHtml(g.name)} <span style="color:var(--text-dim);">·${g.count}</span></span>`).join("")}
+        </div>
+      </div>` : "";
+
+    host.innerHTML = `
+      <div class="card recent-listening">
+        <div class="rl-stats">
+          <div class="rl-stat"><div class="rl-val">${playCount}</div><div class="rl-label">recent plays</div></div>
+          <div class="rl-stat"><div class="rl-val">${activeDays}</div><div class="rl-label">day${activeDays === 1 ? "" : "s"} active</div></div>
+          <div class="rl-stat"><div class="rl-val rl-time">${escapeHtml(_fmtRelativeDate(winLast))}</div><div class="rl-label">last play</div></div>
+        </div>
+        ${top.length ? `
+          <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+            <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:10px;">Most played artists</div>
+            <div class="artist-row">${topRow}</div>
+          </div>` : ""}
+        ${genreLine}
+      </div>
+    `;
   } catch {
-    $("mood-chart").innerHTML = `<div style="color:var(--danger);font-size:13px;">Couldn't fetch mood data.</div>`;
+    host.innerHTML = `<div class="empty"><h3>Couldn't load</h3></div>`;
   }
 }
 
+// --- Daily listening + journal mood (honest replacement for the time-series) ---
+async function loadDailyMood() {
+  const host = $("daily-mood");
+  try {
+    const d = await api("/spotify/daily?days=30");
+    renderDailyMood(d);
+  } catch {
+    host.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px;">Couldn't load daily listening.</div>`;
+  }
+}
+
+function renderDailyMood(d) {
+  const host = $("daily-mood");
+  const days = d.days || [];
+  const musicMax = Math.max(1, ...days.map(x => x.plays || 0));
+
+  // Honesty banner about what's in the data
+  const note = d.overlap_days === 0
+    ? `<div style="background:rgba(196, 126, 42, 0.07);border:1px solid rgba(196, 126, 42, 0.22);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;line-height:1.55;">
+         <strong>No overlapping days yet.</strong> You listened on ${d.music_days} day${d.music_days === 1 ? "" : "s"} and journaled on ${d.journal_days}, but no day has both. Once they overlap, you'll see how the two move together.
+       </div>`
+    : `<div style="background:var(--accent-soft);border:1px solid rgba(79, 124, 90, 0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;line-height:1.55;">
+         <strong>${d.overlap_days} ${d.overlap_days === 1 ? "day" : "days"}</strong> with both music and a journal entry — those are the bars with a coloured dot.
+       </div>`;
+
+  host.innerHTML = `
+    ${note}
+    <div id="daily-mood-wrap" style="position:relative;">
+      <div style="display:flex;align-items:flex-end;gap:3px;height:170px;padding:6px 0 22px;border-bottom:1px solid var(--border);">
+        ${days.map((x, i) => {
+          const h = x.plays > 0 ? Math.max(4, (x.plays / musicMax) * 150) : 2;
+          const dim = x.plays === 0;
+          return `<div class="daily-bar" data-i="${i}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;">
+            <div class="daily-bar-bar" style="width:100%;height:${h}px;border-radius:3px 3px 0 0;background:${dim ? "rgba(48, 38, 24, 0.10)" : "linear-gradient(180deg, var(--accent), var(--accent-deep))"};transition:opacity 0.12s ease;"></div>
+            <div class="daily-bar-dot" style="width:9px;height:9px;border-radius:50%;margin-top:5px;background:${x.emotion ? `var(--e-${x.emotion})` : "transparent"};box-shadow:${x.emotion ? "0 0 0 2px rgba(255,253,248,0.7)" : "none"};"></div>
+          </div>`;
+        }).join("")}
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-dim);margin-top:6px;">
+        <span>${days.length ? new Date(days[0].date).toLocaleDateString([],{month:"short",day:"numeric"}) : ""}</span>
+        <span>${days.length ? new Date(days[Math.floor(days.length/2)].date).toLocaleDateString([],{month:"short",day:"numeric"}) : ""}</span>
+        <span>today</span>
+      </div>
+      <div class="chart-tooltip" id="daily-mood-tip" style="position:absolute;pointer-events:none;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 11px;font-size:11.5px;color:#18181b;white-space:nowrap;opacity:0;transition:opacity 0.12s;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.08);"></div>
+    </div>
+    <div style="display:flex;gap:18px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text-muted);flex-wrap:wrap;">
+      <span><span style="display:inline-block;width:10px;height:8px;background:var(--accent);border-radius:2px;vertical-align:middle;margin-right:5px;"></span>Bar height = plays that day</span>
+      <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--e-content);box-shadow:0 0 0 2px rgba(255,253,248,0.7);vertical-align:middle;margin-right:5px;"></span>Dot = your top journal emotion that day</span>
+    </div>`;
+
+  // Hover tooltip
+  const tip = document.getElementById("daily-mood-tip");
+  const wrap = document.getElementById("daily-mood-wrap");
+  host.querySelectorAll(".daily-bar").forEach(el => {
+    el.addEventListener("mouseenter", (ev) => {
+      const idx = parseInt(el.getAttribute("data-i"), 10);
+      const x = days[idx];
+      const dateLabel = new Date(x.date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
+      const lines = [`<div style="font-weight:600;margin-bottom:3px;">${dateLabel}</div>`];
+      lines.push(`<div>Music: <b>${x.plays}</b> ${x.plays === 1 ? "play" : "plays"}</div>`);
+      if (x.emotion) {
+        lines.push(`<div style="color:#444;">Journal: <b>${escapeHtml(x.emotion)}</b>${x.avg_intensity != null ? ` · ${x.avg_intensity}/10` : ""} · ${x.entry_count} ${x.entry_count === 1 ? "entry" : "entries"}</div>`);
+      } else {
+        lines.push(`<div style="color:#94a3b8;">No journal entry</div>`);
+      }
+      tip.innerHTML = lines.join("");
+      const wrapRect = wrap.getBoundingClientRect();
+      const barRect = el.getBoundingClientRect();
+      const x_px = barRect.left - wrapRect.left + barRect.width / 2;
+      tip.style.left = Math.min(wrapRect.width - 200, Math.max(0, x_px - 90)) + "px";
+      tip.style.top = "0px";
+      tip.style.opacity = "1";
+    });
+    el.addEventListener("mouseleave", () => { tip.style.opacity = "0"; });
+  });
+}
+
+// (legacy — no longer wired, kept so any external callers don't break)
+async function loadMoodChart() {}
 function renderMoodChart(m) {
   const pts = m.points || [];
   const host = $("mood-chart");

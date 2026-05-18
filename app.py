@@ -2541,6 +2541,41 @@ def spotify_genre_mood():
             "label": _mood_quadrant_label(cv, ce),
         }
 
+    # 8) Discovered genres — even when none map to mood, the user wants to
+    # see what Spotify thinks they're listening to. Counter across all
+    # primary artists.
+    genre_counter = Counter()
+    for ag in artist_genres.values():
+        for g in ag:
+            genre_counter[g] += 1
+    discovered_genres = [
+        {"name": g, "count": c} for g, c in genre_counter.most_common(12)
+    ]
+
+    # 9) Top artists by play count (always works, no genres needed)
+    artist_counter = Counter()
+    artist_meta: Dict[str, dict] = {}
+    for p in plays:
+        a = (p.get("artist") or "").split(",")[0].strip()
+        if a:
+            artist_counter[a] += 1
+            if a not in artist_meta:
+                artist_meta[a] = {"name": a, "image": p.get("image")}
+    top_artists = [
+        {**artist_meta[a], "plays": c}
+        for a, c in artist_counter.most_common(8)
+    ]
+
+    # 10) Listening window summary — first/last play timestamps
+    timestamps = sorted(p.get("played_at") for p in plays if p.get("played_at"))
+    listening_window = None
+    if timestamps:
+        listening_window = {
+            "first": timestamps[0],
+            "last": timestamps[-1],
+            "active_days": len(set((t or "")[:10] for t in timestamps)),
+        }
+
     return {
         "tracks": tracks_out,
         "points": points,
@@ -2551,7 +2586,76 @@ def spotify_genre_mood():
         ],
         "enriched_share": enriched_share,
         "play_count": len(plays),
+        "discovered_genres": discovered_genres,
+        "top_artists": top_artists,
+        "listening_window": listening_window,
         "genre_table_size": len(GENRE_MOOD),
+    }
+
+
+@app.get("/spotify/daily")
+def spotify_daily(days: int = 30):
+    """Per-day listening counts + per-day journal mood for an honest
+    side-by-side chart. We don't smooth, we don't interpolate, and we don't
+    invent correlations — empty days stay empty."""
+    cfg = spotify_authed()
+    if not cfg:
+        raise HTTPException(401, "Not connected to Spotify")
+
+    n_days = max(7, min(days, 90))
+
+    # Recent plays — Spotify caps at 50
+    recent = spotify_get(cfg, "/me/player/recently-played", {"limit": 50}).get("items", [])
+    plays_by_day: Dict[str, int] = defaultdict(int)
+    for it in recent:
+        ts = (it.get("played_at") or "")[:10]
+        if ts:
+            plays_by_day[ts] += 1
+
+    # Journal per day — top emotion + avg intensity
+    entries = load_file(JOURNAL_FILE)
+    by_day_emotion: Dict[str, Counter] = defaultdict(Counter)
+    by_day_intensity: Dict[str, List[float]] = defaultdict(list)
+    for e in entries:
+        ts = _safe_dt(e.get("timestamp"))
+        if not ts:
+            continue
+        d = ts.date().isoformat()
+        by_day_emotion[d][(e.get("emotion") or "neutral").lower()] += 1
+        try:
+            by_day_intensity[d].append(float(e.get("intensity") or 0))
+        except Exception:
+            pass
+
+    today = date.today()
+    days_out: List[dict] = []
+    for i in range(n_days - 1, -1, -1):
+        d = (today - timedelta(days=i)).isoformat()
+        plays = plays_by_day.get(d, 0)
+        emo_counter = by_day_emotion.get(d)
+        emotion = emo_counter.most_common(1)[0][0] if emo_counter else None
+        intensities = by_day_intensity.get(d, [])
+        avg_intensity = round(sum(intensities) / len(intensities), 2) if intensities else None
+        days_out.append({
+            "date": d,
+            "plays": plays,
+            "emotion": emotion,
+            "avg_intensity": avg_intensity,
+            "entry_count": len(intensities),
+        })
+
+    # Honest overlap metric: how many days have BOTH a play and an entry
+    overlap = sum(1 for d in days_out if d["plays"] > 0 and d["avg_intensity"] is not None)
+    music_days = sum(1 for d in days_out if d["plays"] > 0)
+    journal_days = sum(1 for d in days_out if d["avg_intensity"] is not None)
+
+    return {
+        "days": days_out,
+        "window_days": n_days,
+        "plays_total": sum(d["plays"] for d in days_out),
+        "music_days": music_days,
+        "journal_days": journal_days,
+        "overlap_days": overlap,
     }
 
 
