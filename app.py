@@ -41,7 +41,7 @@ from collections import Counter, defaultdict
 # Config
 # ---------------------------------------------------------------------------
 
-MODEL = os.environ.get("INNERBLOOM_MODEL", "llama3.2:3b")
+MODEL = os.environ.get("INNERBLOOM_MODEL", "qwen2.5:7b")
 EMBED_MODEL = os.environ.get("INNERBLOOM_EMBED_MODEL", "nomic-embed-text")
 OLLAMA_URL = os.environ.get("INNERBLOOM_OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_TAGS_URL = os.environ.get("INNERBLOOM_OLLAMA_TAGS_URL", "http://localhost:11434/api/tags")
@@ -946,6 +946,88 @@ def extract_citations(reply: str, relevant: List[dict]) -> List[dict]:
     return cites
 
 
+# ---------------------------------------------------------------------------
+# Chat — small-talk fast-path, brevity intent, banned-phrase scrubbing
+# ---------------------------------------------------------------------------
+
+_SMALLTALK_PATTERNS = [
+    r"^(hi|hey|hello|yo|sup|hola)[!.]*$",
+    r"^good (morning|afternoon|evening|night)[!.]*$",
+    r"^(thanks|thank you|ty|thx|cheers)[!.]*$",
+    r"^(bye|goodbye|see you|cya|gnight|good night)[!.]*$",
+    r"^how (are|r) (you|u)[?!.]*$",
+    r"^(ok|okay|alright|cool|nice|got it|sounds good)[!.]*$",
+    r"^(lol|lmao|haha|hehe)[!.]*$",
+]
+_SMALLTALK_RX = re.compile("|".join(_SMALLTALK_PATTERNS), re.IGNORECASE)
+
+
+def is_smalltalk(msg: str) -> bool:
+    """Greetings and other short conversational messages don't need the agent
+    loop, journal context, or insight surfacing. Treat them as plain chat."""
+    if not msg:
+        return False
+    cleaned = msg.strip()
+    if len(cleaned) > 32:
+        return False
+    if _SMALLTALK_RX.match(cleaned):
+        return True
+    return False
+
+
+# Phrases the user explicitly asked us not to use, plus a few others that
+# always read as chatbot boilerplate. We scrub these after generation as a
+# defence-in-depth on top of the system prompt.
+_BANNED_PHRASES_RX = re.compile(
+    r"(?ix)"
+    r"(?:^|\s)("
+    r"based on (your|the) recent journal entries[,:]?\s*"
+    r"|based on your journal[,:]?\s*"
+    r"|i (?:couldn['’]?t|could not) find (?:any )?(?:specific )?mentions? of\s*"
+    r"|however,?\s*i (?:couldn['’]?t|could not) find\s*"
+    r"|it seems (?:like )?(?:that )?"
+    r"|it appears (?:that )?"
+    r"|i hope (?:this|that) helps[!.]?\s*"
+    r"|let me know if you('|’)?d like\s*"
+    r"|here['’]?s? what i found[:.]\s*"
+    r"|as an ai (?:language model|assistant)[,:]?\s*"
+    r")",
+)
+
+
+def scrub_banned_phrases(text: str) -> str:
+    """Remove chatbot-boilerplate openings that survive the system prompt.
+    Cleans up the seam (capitalisation, leading punctuation) after removal."""
+    out = _BANNED_PHRASES_RX.sub(" ", text or "")
+    # Collapse the whitespace + capitalize the first letter of each sentence.
+    out = re.sub(r"\s+", " ", out).strip()
+    if out:
+        # If we removed the opening clause, the rest of the sentence may start
+        # with a lowercase word — capitalise it.
+        out = out[0].upper() + out[1:]
+    # Remove stray "It seems" / "It appears" mid-sentence too (case-insensitive).
+    out = re.sub(r"(?i)\bit (?:seems|appears) (?:like |that )?", "", out)
+    return out.strip()
+
+
+# Brevity detection — when the user explicitly asks for a short reply.
+_BREVITY_RX = re.compile(
+    r"(?i)\b(?:in short|tl;?dr|briefly|short(?:ly)?|one line|"
+    r"one sentence|quick(?:ly)?|just (?:tell me|the gist)|"
+    r"keep it short|summary|summarize|condense)\b"
+)
+
+
+def detect_brevity(msg: str) -> Optional[str]:
+    """If the user explicitly asks for a short reply, return a length hint
+    we can splice into the drafter prompt."""
+    if not msg:
+        return None
+    if _BREVITY_RX.search(msg):
+        return "The user explicitly asked for a SHORT reply. Maximum 2 sentences. No bullet lists. No preamble."
+    return None
+
+
 def clean_reply(reply: str) -> str:
     """Strip [cite:xxx] tokens and any punctuation left dangling around them.
 
@@ -1346,6 +1428,36 @@ def chat_agent(data: ChatInput):
         if safety:
             yield event({"type": "safety", "safety": safety})
 
+        # 1a) Small-talk fast-path. "Good morning" / "hi" / "thanks" shouldn't
+        # cause us to invoke the agent loop, pull journal context, or attach
+        # citations. It's just a greeting — reply as a person would.
+        if is_smalltalk(msg):
+            yield event({"type": "manifest", "candidates": [],
+                         "mode": "journal", "personality": personality})
+            smalltalk_system = (
+                system +
+                "\n\nThe user just sent a casual greeting or short conversational message. "
+                "Reply with a warm, short greeting in kind — 1 short sentence max. "
+                "Do NOT reference their journal entries. Do NOT analyse their mood. "
+                "Do NOT ask 'what's on your mind' or offer help unless they ask. "
+                "Just say hi back, like a person would."
+            )
+            collected: List[str] = []
+            for chunk in call_llama_stream(msg, system=smalltalk_system, temperature=0.7):
+                collected.append(chunk)
+                yield event({"type": "token", "value": chunk})
+            reply = scrub_banned_phrases(clean_reply("".join(collected)))
+            turn = {
+                "id": str(uuid.uuid4()), "user": msg, "ai": reply,
+                "citations": [], "mode": "journal", "personality": personality,
+                "safety": safety, "smalltalk": True,
+                "timestamp": datetime.now().isoformat(),
+            }
+            turn["embedding"] = embed(_chat_embed_text(turn))
+            history = load_file(CHAT_FILE); history.append(turn); save_file(CHAT_FILE, history)
+            yield event({"type": "done", "citations": []})
+            return
+
         # 2) Planning step
         yield event({"type": "step", "id": "plan", "kind": "plan",
                      "label": "Reading the question", "status": "running"})
@@ -1428,12 +1540,15 @@ def chat_agent(data: ChatInput):
         yield event({"type": "manifest", "candidates": candidates,
                      "mode": "journal", "personality": personality})
 
-        # 5) Drafter — streams tokens
+        # 5) Drafter — streams tokens. If the user asked for brevity, splice
+        # an extra length constraint into the system prompt for this call.
+        brevity_hint = detect_brevity(msg)
+        drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
         yield event({"type": "step", "id": "draft", "kind": "draft",
                      "label": "Drafting the reply", "status": "running"})
         prompt = build_agent_prompt(msg, observations)
         collected: List[str] = []
-        for chunk in call_llama_stream(prompt, system=system, temperature=0.6):
+        for chunk in call_llama_stream(prompt, system=drafter_system, temperature=0.6):
             collected.append(chunk)
             yield event({"type": "token", "value": chunk})
         yield event({"type": "step", "id": "draft", "kind": "draft",
@@ -1446,7 +1561,7 @@ def chat_agent(data: ChatInput):
         relevant_full = [full_by_id[c["full_id"]] for c in candidates
                          if c.get("full_id") in full_by_id]
         citations = extract_citations(raw, relevant_full)
-        reply = clean_reply(raw)
+        reply = scrub_banned_phrases(clean_reply(raw))
 
         # Persist the turn
         turn = {
@@ -1478,13 +1593,36 @@ def chat(data: ChatInput):
     system = build_system_prompt(mode, personality)
 
     safety = crisis_check(msg)
+
+    # Small-talk fast path — skip journal retrieval entirely.
+    if is_smalltalk(msg) and mode == "journal":
+        smalltalk_system = (
+            system +
+            "\n\nThe user just sent a casual greeting or short conversational message. "
+            "Reply with a warm, short greeting in kind — 1 short sentence max. "
+            "Do NOT reference their journal entries. Do NOT analyse mood."
+        )
+        raw = call_llama(msg, system=smalltalk_system, temperature=0.7)
+        reply = scrub_banned_phrases(clean_reply(raw))
+        turn = {
+            "id": str(uuid.uuid4()), "user": msg, "ai": reply, "citations": [],
+            "mode": mode, "personality": personality, "safety": safety,
+            "smalltalk": True, "timestamp": datetime.now().isoformat(),
+        }
+        turn["embedding"] = embed(_chat_embed_text(turn))
+        history = load_file(CHAT_FILE); history.append(turn); save_file(CHAT_FILE, history)
+        return {"reply": reply, "citations": [], "safety": safety,
+                "turn": _strip_embedding(turn)}
+
     memory = _chat_memory_for_mode(msg, mode)
     relevant = memory["entries"]
     prompt = build_context(msg, memory)
 
-    raw = call_llama(prompt, system=system, temperature=0.6)
+    brevity_hint = detect_brevity(msg)
+    drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
+    raw = call_llama(prompt, system=drafter_system, temperature=0.6)
     citations = extract_citations(raw, relevant)
-    reply = clean_reply(raw)
+    reply = scrub_banned_phrases(clean_reply(raw))
 
     turn = {
         "id": str(uuid.uuid4()),
@@ -1542,12 +1680,14 @@ def chat_stream(data: ChatInput):
             "personality": personality,
         }
         yield "\x1e" + json.dumps(manifest) + "\n"  # record separator
-        for chunk in call_llama_stream(prompt, system=system, temperature=0.6):
+        brevity_hint = detect_brevity(msg)
+        drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
+        for chunk in call_llama_stream(prompt, system=drafter_system, temperature=0.6):
             collected.append(chunk)
             yield chunk
         raw = "".join(collected)
         citations = extract_citations(raw, relevant)
-        reply = clean_reply(raw)
+        reply = scrub_banned_phrases(clean_reply(raw))
         turn = {
             "id": str(uuid.uuid4()),
             "user": msg,

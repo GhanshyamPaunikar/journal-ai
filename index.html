@@ -2058,7 +2058,14 @@ async function updateHealth() {
   try {
     const r = await api("/health");
     if (r.ollama === "up") {
-      $("health-badge").innerHTML = '<span style="color:var(--success)">●</span> llama3.2 ready';
+      // Pull the model name from the root endpoint when we know it; this
+      // keeps the badge honest after a user switches INNERBLOOM_MODEL.
+      let modelName = "Ollama";
+      try {
+        const root = await api("/");
+        if (root.model) modelName = String(root.model).split(":")[0];
+      } catch {}
+      $("health-badge").innerHTML = `<span style="color:var(--success)">●</span> ${escapeHtml(modelName)} ready`;
       $("health-badge").className = "badge green";
     } else {
       $("health-badge").innerHTML = '<span style="color:var(--danger)">●</span> ollama offline';
@@ -5154,7 +5161,7 @@ async function renderSettings() {
 
     <div class="settings-section">
       <h3>Model</h3>
-      <div class="desc">Running locally via Ollama. Current model: <code>${escapeHtml(status.model || "llama3.2:3b")}</code>. Change via <code>INNERBLOOM_MODEL</code> env var.</div>
+      <div class="desc">Running locally via Ollama. Current model: <code>${escapeHtml(status.model || "qwen2.5:7b")}</code>. Change via <code>INNERBLOOM_MODEL</code> env var.</div>
     </div>
   `;
 

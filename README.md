@@ -123,7 +123,7 @@ All insights are stored in `data/insights.json` for review history.
 ### Prerequisites
 - **Python 3.10+**
 - **Ollama** installed and running: https://ollama.ai
-- A pulled model (we use `llama3.2:3b` — ~2 GB, runs on 8 GB RAM)
+- A pulled model (default is `qwen2.5:7b` — ~4.7 GB)
 - Optional: `nomic-embed-text` for semantic search (`ollama pull nomic-embed-text`)
 
 ### 1. Clone & Install
@@ -140,7 +140,7 @@ pip install -r requirements.txt
 ```bash
 ollama serve
 # In another terminal:
-ollama pull llama3.2:3b
+ollama pull qwen2.5:7b
 ollama pull nomic-embed-text  # for semantic search
 ```
 
@@ -207,7 +207,7 @@ That's it. You're ready to journal.
 
 ```bash
 # Model
-INNERBLOOM_MODEL=llama3.2:3b
+INNERBLOOM_MODEL=qwen2.5:7b
 
 # Embeddings for semantic search
 INNERBLOOM_EMBED_MODEL=nomic-embed-text
@@ -222,14 +222,14 @@ INNERBLOOM_DATA_DIR=./data
 
 ### Picking a Model
 
-The default is **`llama3.2:3b`** — it fits on 8 GB of RAM and runs at conversational speed. Innerbloom is built so swapping the model only changes *quality*; every endpoint, every insight engine, and every prompt works at any size. Here's what you actually gain by going bigger:
+The default is **`qwen2.5:7b`** — best quality you can get inside 8 GB of RAM. The 3B models we used to ship with were fast but hallucinated intentions and produced bot-y replies; 7B is the threshold where chat and the insight engines start to feel real. Innerbloom is built so swapping the model only changes *quality*; every endpoint, every insight engine, and every prompt works at any size.
 
 | Model                           | RAM needed     | Speed (M1)        | What gets better                                                                                              |
 | ------------------------------- | -------------- | ----------------- | ------------------------------------------------------------------------------------------------------------- |
-| `llama3.2:3b` *(default)*       | 8 GB           | ~30 tok/s         | Solid daily driver. Snappy chat, decent insights. Occasionally misses subtle contradictions.                  |
-| `qwen2.5:7b-instruct`           | 8 GB tight     | ~15 tok/s         | Noticeably sharper at *narrative* and *contradictions*. Better at preserving long-context structure.          |
-| `mistral:7b-instruct`           | 8 GB tight     | ~18 tok/s         | Drier voice, very good at *triggers* (stats-style reasoning). Worst pick for *calm therapist* personality.    |
-| `llama3.1:8b`                   | 16 GB ideal    | ~10 tok/s         | The single biggest **insight quality** jump. Reflections feel personal instead of generic. Background-only on 8 GB. |
+| `llama3.2:3b`                   | 8 GB           | ~30 tok/s         | Fast, but produces bot-y replies and frequently invents intentions that aren't in your journal. Demo-grade.   |
+| `qwen2.5:7b` *(default)*        | 8 GB tight     | ~15 tok/s         | The right floor. Chat feels human, contradictions ground in real text, narrative reads like a person.         |
+| `mistral:7b-instruct`           | 8 GB tight     | ~18 tok/s         | Drier voice, very good at *triggers* (stats-style reasoning). Worst pick for the Companion personality.       |
+| `llama3.1:8b`                   | 16 GB ideal    | ~10 tok/s         | Slightly sharper than Qwen 7B at long-context narrative. Background-only on 8 GB.                             |
 | `qwen2.5:14b`                   | 16+ GB         | ~4 tok/s          | Therapist-grade nuance. Insight engines start naming patterns a friend would name. Chat is slow.              |
 | `gpt-oss:20b` / `mixtral:8x7b`  | 24+ GB / 48+ GB| 2–6 tok/s         | If you have the hardware, the *narrative* and *wellbeing summary* engines become genuinely worth re-reading.  |
 
@@ -343,7 +343,7 @@ Tests cover:
           │                                    ▼
           │                        ┌──────────────────────┐
           │                        │  Ollama (localhost)  │
-          │                        │  llama3.2:3b         │
+          │                        │  qwen2.5:7b          │
           │                        │  nomic-embed-text    │
           │                        └──────────────────────┘
           │
