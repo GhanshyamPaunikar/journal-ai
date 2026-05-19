@@ -653,6 +653,20 @@ body {
   max-width: 50%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* === Show-more button (insights overflow) === */
+.show-more-btn {
+  align-self: center; margin-top: 6px;
+  padding: 8px 18px; border-radius: 20px;
+  background: var(--bg-elev); border: 1.5px solid var(--border); color: var(--text-muted);
+  font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  letter-spacing: 0.02em;
+}
+.show-more-btn:hover {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--accent);
+}
+.show-more-btn--grid { grid-column: 1 / -1; justify-self: center; }
+
 /* === Contradiction insight cards === */
 .contradiction-list { display: flex; flex-direction: column; gap: 12px; }
 .contradiction-card {
@@ -3234,6 +3248,12 @@ $("btn-weekly").addEventListener("click", () => runAnalysis("/weekly-review", "R
 $("btn-monthly").addEventListener("click", () => runAnalysis("/monthly-review", "Reflecting on 30 days"));
 
 // --- Contradictions (Phase 3 insight engine) ------------------------------
+// Reveal pattern: cap visible items, show "Show all (N)" toggle when there
+// are more. Keeps the page from feeling cluttered while still giving access
+// to the long tail.
+const CONTRADICTIONS_DEFAULT_LIMIT = 3;
+let _contradictionsExpanded = false;
+
 function renderContradictions(data) {
   const list = $("contradiction-list");
   const meta = $("contradictions-meta");
@@ -3255,8 +3275,11 @@ function renderContradictions(data) {
     return;
   }
 
+  const visible = _contradictionsExpanded ? items : items.slice(0, CONTRADICTIONS_DEFAULT_LIMIT);
+  const hiddenCount = items.length - visible.length;
+
   list.innerHTML = "";
-  items.forEach(c => {
+  visible.forEach(c => {
     const card = document.createElement("div");
     card.className = "contradiction-card";
 
@@ -3287,6 +3310,20 @@ function renderContradictions(data) {
     }
     list.appendChild(card);
   });
+
+  if (hiddenCount > 0 || _contradictionsExpanded) {
+    const more = document.createElement("button");
+    more.className = "show-more-btn";
+    more.type = "button";
+    more.textContent = _contradictionsExpanded
+      ? "Show fewer"
+      : `Show all ${items.length} contradictions`;
+    more.addEventListener("click", () => {
+      _contradictionsExpanded = !_contradictionsExpanded;
+      renderContradictions(data);
+    });
+    list.appendChild(more);
+  }
 }
 
 async function loadContradictions() {
@@ -3315,6 +3352,9 @@ $("btn-contradictions-refresh").addEventListener("click", async () => {
 });
 
 // --- Emotional Triggers (Phase 3 insight engine) -------------------------
+const TRIGGERS_DEFAULT_LIMIT = 4;
+let _triggersExpanded = false;
+
 function renderTriggers(data) {
   const grid = $("trigger-grid");
   const meta = $("triggers-meta");
@@ -3339,8 +3379,11 @@ function renderTriggers(data) {
   // Map signed delta into a 0–50% width on the half-bar (each side caps at 50%).
   const widthForDelta = d => `${Math.min(50, Math.abs(d) * 6)}%`;
 
+  const visible = _triggersExpanded ? items : items.slice(0, TRIGGERS_DEFAULT_LIMIT);
+  const hiddenCount = items.length - visible.length;
+
   grid.innerHTML = "";
-  items.forEach(t => {
+  visible.forEach(t => {
     const card = document.createElement("div");
     card.className = `trigger-card ${t.direction}`;
 
@@ -3391,6 +3434,20 @@ function renderTriggers(data) {
     }
     grid.appendChild(card);
   });
+
+  if (hiddenCount > 0 || _triggersExpanded) {
+    const more = document.createElement("button");
+    more.className = "show-more-btn show-more-btn--grid";
+    more.type = "button";
+    more.textContent = _triggersExpanded
+      ? "Show fewer"
+      : `Show all ${items.length} triggers`;
+    more.addEventListener("click", () => {
+      _triggersExpanded = !_triggersExpanded;
+      renderTriggers(data);
+    });
+    grid.appendChild(more);
+  }
 }
 
 async function loadTriggers() {

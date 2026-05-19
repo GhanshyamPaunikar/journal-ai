@@ -3013,86 +3013,320 @@ def _enrich_evidence(entry_ids: List[str], lookup: Dict[str, dict]) -> List[dict
     return out
 
 
+_INTENTION_MARKERS = (
+    # First-person commitments
+    "i'll", "i will", "i'm going", "im going", "going to",
+    "promised", "want to", "wanted to", "i need to", "need to",
+    "should", "have to", "trying to", "planning to",
+    "i won't", "no more", "from now on", "starting tomorrow",
+    "this week", "this time", "this month",
+    "i keep", "tired of", "i'm done", "im done",
+    # Third-person paraphrases the LLM sometimes uses
+    "he wants", "she wants", "they want", "wants to", "needs to",
+    "trying", "promises",
+)
+
+# Pattern labels that imply an intention-vs-behavior gap. If the LLM picks
+# one of these patterns, we accept the item even if 'stated' doesn't contain
+# an explicit verb marker.
+_INTENTION_PATTERNS = {
+    "intention-drift", "intention drift", "avoidance", "procrastination",
+    "people-pleasing", "people pleasing", "overcommitting", "boundaries",
+    "self-betrayal", "self betrayal", "self-criticism", "self criticism",
+    "perfectionism", "rumination", "overthinking",
+}
+
+# Regex that catches actual sentences expressing an intention. Run over each
+# entry's text. We yield (entry_id, matched_sentence) so the LLM gets real
+# candidates to evaluate, not made-up ones.
+_INTENTION_SENTENCE_RX = re.compile(
+    r"([^.!?\n]{6,180}?(?:i['’]?ll|i will|i['’]?m going to|going to start|"
+    r"promised myself|i won['’]?t|no more|from now on|i need to|want to start|"
+    r"trying to|this time i|this week i|i keep|tired of being|i['’]?m done)"
+    r"[^.!?\n]{0,180}[.!?])",
+    re.IGNORECASE,
+)
+
+
+def _extract_intention_candidates(entries: List[dict], max_per_entry: int = 2) -> List[dict]:
+    """Scan each entry for sentences that look like stated intentions.
+    Returns a list of {entry_id, date, sentence} so we can feed REAL
+    candidates to the LLM rather than letting it invent them."""
+    out: List[dict] = []
+    for e in entries:
+        text = e.get("text") or ""
+        if not text:
+            continue
+        matches = _INTENTION_SENTENCE_RX.findall(text)
+        if not matches:
+            continue
+        for m in matches[:max_per_entry]:
+            s = m.strip()
+            if 12 <= len(s) <= 260:
+                out.append({
+                    "entry_id": e["id"][:8],
+                    "full_id": e["id"],
+                    "date": (e.get("timestamp") or "")[:10],
+                    "sentence": s,
+                })
+    return out
+
+def _word_set(s: str) -> set:
+    return set(re.findall(r"[a-z]{3,}", (s or "").lower()))
+
+
+def _max_evidence_date(evidence: List[dict]) -> str:
+    """Return the latest YYYY-MM-DD across evidence pills, for recency sort."""
+    return max((e.get("date") or "" for e in evidence), default="")
+
+
+def _date_to_int(s: str) -> int:
+    """Turn YYYY-MM-DD into a sortable int. Missing/bad → 0."""
+    try:
+        return int((s or "").replace("-", "")[:8])
+    except Exception:
+        return 0
+
+
 def compute_contradictions(window_days: int = 60) -> dict:
-    """LLM pass to surface gaps between stated intentions/values and actual
-    behavior. Caches into INSIGHTS_FILE under the 'contradictions' key."""
+    """Surface gaps between stated intentions and actual behavior.
+
+    Two-pass approach because the 3B model can't be trusted to extract
+    intentions reliably — it hallucinates "I'll meditate every morning"
+    type lines that never appear in the data.
+
+      1. Python regex scans every entry for sentences containing real
+         intention markers. These become CANDIDATES.
+      2. The LLM is given those candidates plus a compact list of later
+         entries and asked to MATCH any candidate to a contradicting
+         entry. Its only job is selection, not invention.
+
+    Output is post-filtered for grounding (must share vocabulary with the
+    cited entry) and similarity (stated ≠ behavior).
+    """
     window = _entries_for_window(window_days)
     if len(window) < 4:
         return {"items": [], "generated_at": datetime.now().isoformat(),
                 "window_days": window_days, "entry_count": len(window),
                 "note": "Need a few more entries before contradictions are meaningful."}
 
-    # Compact entry list for the LLM — short id, date, emotion, brief text
+    candidates = _extract_intention_candidates(window)
+    if not candidates:
+        return {"items": [], "generated_at": datetime.now().isoformat(),
+                "window_days": window_days, "entry_count": len(window),
+                "note": "Couldn't find any clear 'I'll do X' / 'I won't do X' statements in the window. Contradictions need a stated intention to land against."}
+
+    # Compact entry list for the LLM. Cap at the 35 most-recent entries and
+    # trim each snippet so the prompt fits inside the model's context plus
+    # 240s timeout budget on a 3B.
+    recent_window = sorted(window, key=lambda e: e.get("timestamp", ""), reverse=True)[:35]
+    recent_window.reverse()  # oldest-first within the slice for chronology
     lines = []
-    for e in window:
-        snippet = (e.get("summary") or e.get("text", ""))[:240].replace("\n", " ").strip()
+    for e in recent_window:
+        snippet = (e.get("summary") or e.get("text", ""))[:130].replace("\n", " ").strip()
         lines.append(
-            f"[id={e['id'][:8]} | {(e.get('timestamp') or '')[:10]} | "
-            f"emotion={e.get('emotion','?')}] {snippet}"
+            f"[id={e['id'][:8]} | {(e.get('timestamp') or '')[:10]}] {snippet}"
         )
     journal_block = "\n".join(lines)
+
+    cand_block = "\n".join(
+        f"- [id={c['entry_id']} | {c['date']}] \"{c['sentence']}\""
+        for c in candidates[:18]
+    )
 
     schema = (
         '{\n'
         '  "items": [\n'
         '    {\n'
-        '      "stated": "what the user said they want / value / will do",\n'
-        '      "behavior": "what they actually did that contradicts it",\n'
-        '      "evidence": ["id8", "id8"],\n'
-        '      "pattern": "1-3 word label e.g. avoidance, intention-drift, perfectionism",\n'
+        '      "stated_id": "8-char id of the candidate intention entry",\n'
+        '      "behavior_id": "8-char id of the LATER entry that broke that intention",\n'
+        '      "stated_quote": "verbatim or near-verbatim from the stated entry",\n'
+        '      "behavior_quote": "what they actually did, lifted from the behavior entry",\n'
+        '      "pattern": "1-3 word label",\n'
         '      "severity": "low | medium | high",\n'
-        '      "honest_note": "one sentence to the user, second person, no fluff"\n'
+        '      "honest_note": "one sentence to the user, second person"\n'
         '    }\n'
         '  ]\n'
         '}'
     )
 
     system = (
-        "You are an honest pattern-spotter for a personal journal. "
-        "Find genuine contradictions between what the user states (intentions, values, plans) "
-        "and what they actually do (behavior in entries). Be specific and direct. "
-        "Don't moralize, don't motivate — just name the gap. "
-        "Output strict JSON only — no prose, no markdown fences."
+        "You are a careful pattern-spotter. Match each STATED INTENTION to a LATER entry "
+        "where the user did the opposite. Use ONLY the candidates and entries provided. "
+        "Do NOT invent sentences. Quote actual text. Output strict JSON only."
     )
 
-    prompt = f"""Below are recent journal entries (oldest first).
+    prompt = f"""Below are CANDIDATE INTENTION SENTENCES the user actually wrote in their journal,
+and the full list of entries from the same period.
 
-Find 2–6 contradictions between stated intentions/values and observed behavior.
+For each candidate that has a clear LATER contradicting entry, output one item.
+Skip the candidate if no clear contradiction exists in the entries — empty is fine.
+
 Rules:
-- Each contradiction must cite at least one entry id for "stated" and one for "behavior" — combined in the evidence list.
-- Use ONLY the 8-char ids shown in brackets above. Never invent ids.
-- If you can't find real contradictions, return an empty items array.
-- Quote the user's own framing in "stated" and "behavior" — paraphrase tightly, don't editorialize.
-- "honest_note" should sound like a friend who isn't trying to make the user feel better — it's the value-add.
+- "stated_id" must be one of the candidate ids below.
+- "behavior_id" must be a different entry id, dated AFTER the stated one.
+- "stated_quote" must be a literal substring of the stated entry's sentence.
+- "behavior_quote" must be lifted from the behavior entry — do not paraphrase wildly.
+- If you can't find a real match, return an empty items array. That is a valid answer.
 
-Schema (JSON exactly, no fences, no prose):
-{schema}
+Candidate intention sentences (use these — don't invent your own):
+{cand_block}
 
-Entries:
+All entries (for finding the contradicting behavior):
 {journal_block}
+
+Schema (JSON only, no prose, no fences):
+{schema}
 """
-    raw = call_llama(prompt, system=system, temperature=0.35, timeout=240)
+    raw = call_llama(prompt, system=system, temperature=0.2, timeout=240)
     obj = extract_json(raw) or {}
+    if isinstance(obj, list):
+        obj = {"items": obj}
+
+    # Translate the new schema (stated_id / stated_quote / etc.) into the
+    # old shape (stated / behavior / evidence) that the rest of the function
+    # and the frontend already speak.
+    cand_by_id = {c["entry_id"]: c for c in candidates}
+    raw_items_new = (obj.get("items") or [])
+    translated: List[dict] = []
+    for it in raw_items_new:
+        if not isinstance(it, dict):
+            continue
+        sid = str(it.get("stated_id", "")).strip()[:8]
+        bid = str(it.get("behavior_id", "")).strip()[:8]
+        if not sid or not bid or sid == bid:
+            continue
+        if sid not in cand_by_id:
+            continue
+        translated.append({
+            "stated": str(it.get("stated_quote") or cand_by_id[sid]["sentence"]).strip(),
+            "behavior": str(it.get("behavior_quote", "")).strip(),
+            "evidence": [sid, bid],
+            "pattern": str(it.get("pattern", "")).strip() or "intention-drift",
+            "severity": str(it.get("severity", "medium")).strip().lower(),
+            "honest_note": str(it.get("honest_note", "")).strip(),
+        })
+    obj = {"items": translated}
 
     # Build entry lookup once
     entries_full = load_file(JOURNAL_FILE)
     by_id = {e["id"]: e for e in entries_full}
 
+    raw_items = (obj.get("items") or [])[:8]
     items: List[dict] = []
-    for it in (obj.get("items") or [])[:8]:
+    seen_pairs: set = set()       # dedupe by (stated_lower, behavior_lower)
+    seen_behaviors: set = set()   # dedupe by behavior entry id (the same entry
+                                  # shouldn't appear in 3 different contradictions)
+
+    for it in raw_items:
         if not isinstance(it, dict):
             continue
         stated = str(it.get("stated", "")).strip()
         behavior = str(it.get("behavior", "")).strip()
         if not stated or not behavior:
             continue
-        evidence = _enrich_evidence(it.get("evidence") or [], by_id)
-        # Drop any contradiction with no real evidence — that's hallucination
-        if not evidence:
+
+        # Filter 1: identical strings (model duplicated)
+        if stated.lower() == behavior.lower():
             continue
+
+        # Filter 2: heavy word overlap → model just rephrased
+        sw = _word_set(stated)
+        bw = _word_set(behavior)
+        if sw and bw:
+            overlap = len(sw & bw) / max(len(sw), len(bw))
+            if overlap > 0.55:
+                continue
+
+        # (Filter 3 dropped — 'stated' now comes from the pre-extracted
+        # candidate list that already matched the intention regex.)
+
+        # Filter 4: must resolve to real entries
+        evidence = _enrich_evidence(it.get("evidence") or [], by_id)
+        if not evidence or len(evidence) < 1:
+            continue
+
+        # Filter 5 (the important one): the LLM tends to HALLUCINATE
+        # intentions that don't appear in the journal at all
+        # ("I'll try to meditate" when the user never wrote that).
+        # We require that 'stated' shares enough vocabulary with at least
+        # one cited entry to be considered grounded.
+        stated_content_words = {w for w in _word_set(stated) if len(w) >= 4}
+        if stated_content_words:
+            grounded = False
+            for ev in evidence:
+                e_full = by_id.get(ev.get("id"))
+                if not e_full:
+                    continue
+                e_text = (
+                    (e_full.get("text") or "") + " " +
+                    (e_full.get("summary") or "") + " " +
+                    (e_full.get("title") or "")
+                ).lower()
+                e_words = set(re.findall(r"[a-z]{4,}", e_text))
+                if not e_words:
+                    continue
+                overlap_ratio = len(stated_content_words & e_words) / max(len(stated_content_words), 1)
+                if overlap_ratio >= 0.30:
+                    grounded = True
+                    break
+            if not grounded:
+                continue
+
+        # Filter 6: same grounding check for 'behavior'
+        behavior_content_words = {w for w in _word_set(behavior) if len(w) >= 4}
+        if behavior_content_words:
+            grounded_b = False
+            for ev in evidence:
+                e_full = by_id.get(ev.get("id"))
+                if not e_full:
+                    continue
+                e_text = (
+                    (e_full.get("text") or "") + " " +
+                    (e_full.get("summary") or "") + " " +
+                    (e_full.get("title") or "")
+                ).lower()
+                e_words = set(re.findall(r"[a-z]{4,}", e_text))
+                if len(behavior_content_words & e_words) / max(len(behavior_content_words), 1) >= 0.30:
+                    grounded_b = True
+                    break
+            if not grounded_b:
+                continue
+
+        # Filter 6b: 'stated' and 'behavior' must be about the same THING.
+        # If they share zero content words, the model paired unrelated entries.
+        # (Allow exceptions when the pattern is in our intention-pattern set.)
+        common_stopwords = {"this", "that", "with", "have", "been", "from", "they",
+                            "them", "their", "would", "could", "should", "about",
+                            "there", "going", "still", "just", "into", "what",
+                            "want", "need", "keep", "thing", "time", "than", "then",
+                            "when", "where", "which", "even", "also", "more", "less",
+                            "doing", "make", "made", "take", "good", "very", "much",
+                            "feel", "felt", "today", "tomorrow", "after", "before"}
+        sw_real = {w for w in stated_content_words if w not in common_stopwords}
+        bw_real = {w for w in behavior_content_words if w not in common_stopwords}
+        shared_topic = len(sw_real & bw_real)
+        pattern_lower = str(it.get("pattern", "")).strip().lower()
+        if shared_topic < 1 and pattern_lower not in _INTENTION_PATTERNS:
+            continue
+
+        # Filter 7: dedupe across the result set — both by text pair AND
+        # by behavior-entry id so the same "Coding till 3am" entry doesn't
+        # appear as the behavior side of three different contradictions.
+        key = (stated.lower()[:80], behavior.lower()[:80])
+        if key in seen_pairs:
+            continue
+        seen_pairs.add(key)
+        behavior_ev_id = evidence[-1].get("id") if evidence else None
+        if behavior_ev_id and behavior_ev_id in seen_behaviors:
+            continue
+        if behavior_ev_id:
+            seen_behaviors.add(behavior_ev_id)
+
         severity = str(it.get("severity", "medium")).lower()
         if severity not in ("low", "medium", "high"):
             severity = "medium"
+
         items.append({
             "stated": stated[:400],
             "behavior": behavior[:400],
@@ -3100,14 +3334,33 @@ Entries:
             "pattern": str(it.get("pattern", "")).strip()[:40] or "pattern",
             "severity": severity,
             "honest_note": str(it.get("honest_note", "")).strip()[:400],
+            "_recency": _max_evidence_date(evidence),
         })
+
+    # Sort: severity first (high → medium → low), then most-recent evidence.
+    SEV_ORDER = {"high": 0, "medium": 1, "low": 2}
+    items.sort(
+        key=lambda x: (SEV_ORDER.get(x.get("severity"), 9), -1 * _date_to_int(x.get("_recency", "")))
+    )
+    for x in items:
+        x.pop("_recency", None)
 
     result = {
         "items": items,
         "generated_at": datetime.now().isoformat(),
         "window_days": window_days,
         "entry_count": len(window),
+        "candidate_count": len(candidates),
     }
+    # If filters killed everything, surface a useful note rather than a blank.
+    if not items:
+        result["note"] = (
+            f"Found {len(candidates)} entries where you stated an intention, but "
+            f"the scan couldn't ground a clear contradiction between any of them "
+            f"and a later action. This engine is the most sensitive to model "
+            f"quality — try pulling a bigger one (e.g. `ollama pull qwen2.5:7b`) "
+            f"and set INNERBLOOM_MODEL before running uvicorn."
+        )
     cache = _load_insights()
     cache["contradictions"] = result
     _save_insights(cache)
@@ -3330,7 +3583,13 @@ Schema (JSON exactly, no fences):
                 "avg_mood": match["avg_mood"] if match else None,
                 "delta": match["delta"] if match else None,
             } if match else None,
+            "_recency": _max_evidence_date(evidence),
         })
+
+    # Most-recent triggers first (numeric date sort).
+    items.sort(key=lambda x: -_date_to_int(x.get("_recency", "")))
+    for x in items:
+        x.pop("_recency", None)
 
     result = {
         "items": items,
