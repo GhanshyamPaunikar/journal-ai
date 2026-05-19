@@ -264,6 +264,22 @@ body {
 .badge.green { background: rgba(22,163,74,0.10); border-color: rgba(22,163,74,0.25); color: var(--success); }
 .badge.red { background: rgba(220,38,38,0.10); border-color: rgba(220,38,38,0.25); color: var(--danger); }
 
+/* Insight refresh badge — small spinner + counter on the topbar */
+.insight-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(196, 126, 42, 0.08);
+  border-color: rgba(196, 126, 42, 0.22);
+  color: var(--warning);
+  cursor: pointer; user-select: none;
+}
+.insight-badge .spinner {
+  width: 10px; height: 10px; border-radius: 50%;
+  border: 2px solid rgba(196, 126, 42, 0.25);
+  border-top-color: var(--warning);
+  animation: spin 0.9s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
 .kbd-inline {
   font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--text-muted);
   background: rgba(79, 124, 90,0.06); border: 1px solid var(--border);
@@ -936,6 +952,55 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* === People view === */
+.people-header {
+  font-size: 13.5px; color: var(--text-muted); line-height: 1.6;
+  margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+}
+.people-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+.person-card {
+  background: var(--bg-elev); border: 1.5px solid var(--border);
+  border-radius: var(--radius-lg); padding: 18px 20px;
+  box-shadow: var(--shadow-xs);
+  display: flex; flex-direction: column; gap: 14px;
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
+}
+.person-card:hover {
+  box-shadow: var(--shadow); border-color: var(--border-strong);
+  transform: translateY(-1px);
+}
+.person-head { display: flex; gap: 14px; align-items: center; }
+.person-avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Fraunces', serif; font-size: 22px; font-weight: 600; color: white;
+  box-shadow: 0 4px 12px rgba(48,38,24,0.18), inset 0 1px 0 rgba(255,255,255,0.2);
+  flex-shrink: 0; transition: transform 0.2s ease;
+}
+.person-info { flex: 1; min-width: 0; }
+.person-name {
+  font-family: 'Fraunces', serif; font-size: 20px; font-weight: 500;
+  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
+}
+.person-meta { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+.person-meta b { color: var(--text); font-weight: 600; }
+.person-emo-list { display: flex; flex-direction: column; gap: 5px; }
+.person-emo-row {
+  display: grid; grid-template-columns: 14px 80px 1fr 38px;
+  gap: 8px; align-items: center;
+  font-size: 11.5px;
+}
+.person-emo-row .dot { width: 8px; height: 8px; border-radius: 50%; }
+.person-emo-name { color: var(--text); text-transform: capitalize; font-weight: 500; }
+.person-emo-bar { background: var(--bg-1); height: 4px; border-radius: 2px; overflow: hidden; }
+.person-emo-fill { height: 100%; border-radius: 2px; }
+.person-emo-pct { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
+.person-tags { display: flex; gap: 5px; flex-wrap: wrap; }
+.person-entries { display: flex; gap: 5px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+
 /* === Music: simple hour-of-day bar chart === */
 .hour-bars {
   display: flex; align-items: flex-end; gap: 3px; height: 72px;
@@ -1552,6 +1617,10 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="8" y1="7.2" x2="16" y2="7.2"/><line x1="7" y1="8" x2="11.5" y2="16"/><line x1="17" y1="8" x2="12.5" y2="16"/></svg>
       <span>Memory graph</span><span class="kbd">G</span>
     </div>
+    <div class="nav-item" data-view="people">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      <span>People</span><span class="kbd">P</span>
+    </div>
     <div class="nav-section-label">Outside data</div>
     <div class="nav-item" data-view="music">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
@@ -1593,6 +1662,10 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span class="kbd-inline">⌘K</span>
         </button>
+        <span class="badge insight-badge" id="insight-badge" style="display:none;" title="Insight engines refreshing in background">
+          <span class="spinner"></span>
+          <span id="insight-badge-text">insights catching up…</span>
+        </span>
         <span class="badge" id="health-badge">● Connecting…</span>
       </div>
     </div>
@@ -1825,6 +1898,11 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
         </div>
       </section>
 
+      <!-- =============== PEOPLE =============== -->
+      <section class="view" id="view-people">
+        <div id="people-content"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
+      </section>
+
       <!-- =============== MUSIC (SPOTIFY) =============== -->
       <section class="view" id="view-music">
         <div id="music-content"></div>
@@ -2010,6 +2088,7 @@ const TITLES = {
   chat: () => ["Chat", "Talk to your journal"],
   insights: () => ["Insights", "Patterns over time"],
   graph: () => ["Memory graph", "How your entries connect"],
+  people: () => ["People", "Who shows up in your journal"],
   music: () => ["Music & Mood", "Your listening as a mental-health signal"],
   settings: () => ["Settings", "Connections, preferences, data"],
 };
@@ -2038,6 +2117,7 @@ function switchView(view) {
   }
   if (view === "graph") { loadGraph(); }
   else { stopGraphSim(); }
+  if (view === "people") loadPeople();
   if (view === "music") loadMusic();
   if (view === "settings") renderSettings();
 }
@@ -3339,19 +3419,12 @@ async function loadContradictions() {
 }
 
 $("btn-contradictions-refresh").addEventListener("click", async () => {
-  const btn = $("btn-contradictions-refresh");
+  // Async: backend runs in a background thread. Topbar polling shows
+  // progress; this card refreshes itself when the engine finishes.
   const list = $("contradiction-list");
-  const original = btn.textContent;
-  btn.disabled = true; btn.textContent = "Scanning entries…";
-  list.innerHTML = `<div class="contradictions-empty">Reading your last 60 days — this can take 30–90 seconds on a small model.</div>`;
-  try {
-    const data = await api("/insights/contradictions/refresh", { method: "POST" });
-    renderContradictions(data);
-  } catch {
-    list.innerHTML = `<div class="contradictions-empty">Couldn't run the scan. Is Ollama running?</div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = original;
-  }
+  list.innerHTML = `<div class="contradictions-empty">Started a refresh in the background — the card will update when it's done.</div>`;
+  try { await api("/insights/contradictions/refresh", { method: "POST" }); }
+  catch { list.innerHTML = `<div class="contradictions-empty">Couldn't start the scan. Is Ollama running?</div>`; }
 });
 
 // --- Emotional Triggers (Phase 3 insight engine) -------------------------
@@ -3463,19 +3536,10 @@ async function loadTriggers() {
 }
 
 $("btn-triggers-refresh").addEventListener("click", async () => {
-  const btn = $("btn-triggers-refresh");
   const grid = $("trigger-grid");
-  const original = btn.textContent;
-  btn.disabled = true; btn.textContent = "Mapping triggers…";
-  grid.innerHTML = `<div class="triggers-empty">Crunching stats then asking the model — about 30–90 seconds.</div>`;
-  try {
-    const data = await api("/insights/triggers/refresh", { method: "POST" });
-    renderTriggers(data);
-  } catch {
-    grid.innerHTML = `<div class="triggers-empty">Couldn't run the scan. Is Ollama running?</div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = original;
-  }
+  grid.innerHTML = `<div class="triggers-empty">Started in the background — the grid will update when it's done.</div>`;
+  try { await api("/insights/triggers/refresh", { method: "POST" }); }
+  catch { grid.innerHTML = `<div class="triggers-empty">Couldn't start the scan. Is Ollama running?</div>`; }
 });
 
 // --- Wellbeing radar (Phase 3 insight engine) ----------------------------
@@ -3552,17 +3616,8 @@ async function loadWellbeing() {
 }
 
 $("btn-wellbeing-refresh").addEventListener("click", async () => {
-  const btn = $("btn-wellbeing-refresh");
-  const original = btn.textContent;
-  btn.disabled = true; btn.textContent = "Scanning…";
-  try {
-    const data = await api("/insights/wellbeing/refresh", { method: "POST" });
-    renderWellbeing(data);
-  } catch {
-    /* keep prior state */
-  } finally {
-    btn.disabled = false; btn.textContent = original;
-  }
+  try { await api("/insights/wellbeing/refresh", { method: "POST" }); }
+  catch { /* badge will show running state */ }
 });
 
 // --- Identity & Narrative (Phase 3 insight engine) -----------------------
@@ -3679,19 +3734,10 @@ async function loadNarrative() {
 }
 
 $("btn-narrative-refresh").addEventListener("click", async () => {
-  const btn = $("btn-narrative-refresh");
   const host = $("narrative-host");
-  const original = btn.textContent;
-  btn.disabled = true; btn.textContent = "Building narrative…";
-  host.innerHTML = `<div class="narrative-empty">Reading your last 120 days — this can take 60–120 seconds.</div>`;
-  try {
-    const data = await api("/insights/narrative/refresh", { method: "POST" });
-    renderNarrative(data);
-  } catch {
-    host.innerHTML = `<div class="narrative-empty">Couldn't run. Is Ollama running?</div>`;
-  } finally {
-    btn.disabled = false; btn.textContent = original;
-  }
+  host.innerHTML = `<div class="narrative-empty">Started in the background — this can take 60–120 seconds. The card will update on its own.</div>`;
+  try { await api("/insights/narrative/refresh", { method: "POST" }); }
+  catch { host.innerHTML = `<div class="narrative-empty">Couldn't start. Is Ollama running?</div>`; }
 });
 
 // =========================================================================
@@ -4247,6 +4293,92 @@ window.addEventListener("resize", () => {
   _computeClusterAnchors();
   drawGraph();
 });
+
+// =========================================================================
+// PEOPLE — who shows up in your journal, with mood crossover
+// =========================================================================
+async function loadPeople() {
+  const host = $("people-content");
+  host.innerHTML = `<div class="empty"><h3>Loading…</h3></div>`;
+  try {
+    const d = await api("/people");
+    const people = d.people || [];
+    if (!people.length) {
+      host.innerHTML = `
+        <div class="empty">
+          <h3>No people yet</h3>
+          <p>Write entries that mention someone by name (Mom, Kabir, Vikram…) and they'll show up here with the moods that surround them.</p>
+        </div>`;
+      return;
+    }
+
+    const maxMentions = Math.max(...people.map(p => p.mentions));
+    const cards = people.map(p => {
+      const emoColor = `var(--e-${p.top_emotion || "neutral"})`;
+      const tags = (p.top_tags || []).slice(0, 4)
+        .map(t => `<span class="anniv-tag">#${escapeHtml(t)}</span>`).join("");
+      const themes = (p.top_themes || []).slice(0, 3)
+        .map(t => `<span class="anniv-tag" style="background:var(--accent-soft);color:var(--accent-deep);">${escapeHtml(t)}</span>`).join("");
+      // Emotion mini-bars
+      const totalEmos = p.emotion_breakdown.reduce((s, [, c]) => s + c, 0) || 1;
+      const emoBars = p.emotion_breakdown.slice(0, 4).map(([e, c]) => {
+        const pct = Math.round((c / totalEmos) * 100);
+        return `
+          <div class="person-emo-row" title="${c} entries">
+            <span class="dot" style="background:var(--e-${e});"></span>
+            <span class="person-emo-name">${escapeHtml(e)}</span>
+            <div class="person-emo-bar"><div class="person-emo-fill" style="width:${pct}%;background:var(--e-${e});"></div></div>
+            <span class="person-emo-pct">${pct}%</span>
+          </div>`;
+      }).join("");
+      // Entry pills (clickable)
+      const entryPills = (p.entries || []).slice(0, 6).map(e => `
+        <span class="cite-pill" data-id="${e.id}" title="${escapeHtml(e.title || "")}">
+          <span class="dot" style="background:var(--e-${e.emotion || "neutral"});"></span>
+          ${escapeHtml(e.date)}
+        </span>`).join("");
+
+      const sizeRatio = p.mentions / maxMentions;
+      const avatarScale = 0.7 + sizeRatio * 0.5;
+      return `
+        <div class="person-card">
+          <div class="person-head">
+            <div class="person-avatar" style="transform:scale(${avatarScale.toFixed(2)});background:linear-gradient(135deg, ${emoColor}, ${emoColor});">
+              ${escapeHtml((p.name || "?").charAt(0).toUpperCase())}
+            </div>
+            <div class="person-info">
+              <div class="person-name">${escapeHtml(p.name)}</div>
+              <div class="person-meta">
+                <b>${p.mentions}</b> ${p.mentions === 1 ? "mention" : "mentions"}
+                ${p.avg_intensity != null ? ` · avg ${p.avg_intensity}/10` : ""}
+                · ${p.first_seen} → ${p.last_seen}
+              </div>
+            </div>
+          </div>
+          <div class="person-emo-list">${emoBars}</div>
+          ${(tags + themes) ? `<div class="person-tags">${themes}${tags}</div>` : ""}
+          ${entryPills ? `<div class="person-entries">${entryPills}</div>` : ""}
+        </div>`;
+    }).join("");
+
+    host.innerHTML = `
+      <div class="people-header">
+        ${people.length} ${people.length === 1 ? "person" : "people"} appear across your entries.
+        Their faces are coloured by their dominant emotion in your writing.
+      </div>
+      <div class="people-grid">${cards}</div>`;
+
+    // Wire entry pills to open the entry
+    host.querySelectorAll(".cite-pill[data-id]").forEach(el => {
+      el.addEventListener("click", async () => {
+        const id = el.getAttribute("data-id");
+        try { const e = await api(`/journal/${id}`); openEntry(e); } catch {}
+      });
+    });
+  } catch (e) {
+    host.innerHTML = `<div class="empty"><h3>Couldn't load</h3><p>${escapeHtml(e.message)}</p></div>`;
+  }
+}
 
 // =========================================================================
 // MUSIC (SPOTIFY)
@@ -5337,7 +5469,46 @@ window.addEventListener("keydown", (e) => {
   try { const s = await api("/spotify/status"); if (s.connected) $("spotify-nav-dot").style.display = "inline-block"; } catch {}
   setInterval(updateHealth, 30000);
   Notif.start();
+  startInsightPolling();
 })();
+
+// =========================================================================
+// INSIGHT REFRESH PROGRESS
+// =========================================================================
+// Backend now runs the 4 insight engines in background threads (triggered
+// either by /insights/*/refresh or automatically every N entries). We
+// poll /insights/status to show a small spinner in the topbar while any
+// engine is running, and to auto-refetch the cards once they finish.
+let _insightLastFingerprint = "";
+let _insightWasRunning = false;
+async function _tickInsightStatus() {
+  try {
+    const s = await api("/insights/status");
+    const badge = $("insight-badge");
+    const txt = $("insight-badge-text");
+    const running = s.running_count || 0;
+    const done = s.total - running;
+    if (running > 0) {
+      badge.style.display = "inline-flex";
+      txt.textContent = `insights catching up · ${done}/${s.total}`;
+      _insightWasRunning = true;
+    } else {
+      badge.style.display = "none";
+      // If we just transitioned from running → idle, refresh the cards if
+      // we're on the Insights view.
+      if (_insightWasRunning) {
+        _insightWasRunning = false;
+        if (document.getElementById("view-insights")?.classList.contains("active")) {
+          loadContradictions(); loadTriggers(); loadWellbeing(); loadNarrative();
+        }
+      }
+    }
+  } catch { /* ignore — server may just be down */ }
+}
+function startInsightPolling() {
+  _tickInsightStatus();
+  setInterval(_tickInsightStatus, 3500);
+}
 
 // =========================================================================
 // NOTIFICATIONS

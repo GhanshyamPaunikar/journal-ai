@@ -32,6 +32,7 @@ import json
 import math
 import os
 import re
+import threading
 import uuid
 import time
 from datetime import datetime, timedelta, date
@@ -42,7 +43,11 @@ from collections import Counter, defaultdict
 # ---------------------------------------------------------------------------
 
 MODEL = os.environ.get("INNERBLOOM_MODEL", "qwen2.5:7b")
-EMBED_MODEL = os.environ.get("INNERBLOOM_EMBED_MODEL", "nomic-embed-text")
+EMBED_MODEL = os.environ.get("INNERBLOOM_EMBED_MODEL", "mxbai-embed-large")
+
+# Stamped on every embedding so we can auto-detect when the user has
+# switched models and trigger a re-embed pass on next access.
+EMBED_VERSION = EMBED_MODEL
 OLLAMA_URL = os.environ.get("INNERBLOOM_OLLAMA_URL", "http://localhost:11434/api/generate")
 OLLAMA_TAGS_URL = os.environ.get("INNERBLOOM_OLLAMA_TAGS_URL", "http://localhost:11434/api/tags")
 OLLAMA_EMBED_URL = os.environ.get("INNERBLOOM_OLLAMA_EMBED_URL", "http://localhost:11434/api/embeddings")
@@ -143,6 +148,107 @@ def _safe_dt(s):
         return datetime.fromisoformat(s)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Background insight pipeline
+#
+# The four insight engines (contradictions, triggers, wellbeing, narrative)
+# take 30s–3min each on qwen2.5:7b. Running them synchronously on the
+# user's request blocks the UI and burns latency. Instead:
+#
+#   - /insights/*/refresh kicks off a background thread per engine
+#   - state is tracked in INSIGHT_STATUS (kind → "queued"|"running"|"idle")
+#   - /insights/status returns the current map (cheap, no LLM)
+#   - the frontend polls /insights/status while the user is on the Insights
+#     view and shows a small "catching up… 2/4 done" indicator
+#
+# Auto-refresh: /save bumps a counter and triggers a background refresh
+# every AUTO_REFRESH_EVERY entries. So the user never needs to click
+# "Find contradictions" manually — by the time they next look, it's done.
+# ---------------------------------------------------------------------------
+
+INSIGHT_STATUS: Dict[str, str] = {
+    "contradictions": "idle",
+    "triggers":       "idle",
+    "wellbeing":      "idle",
+    "narrative":      "idle",
+}
+INSIGHT_STATUS_LOCK = threading.Lock()
+INSIGHT_LAST_RUN: Dict[str, Optional[str]] = {
+    k: None for k in INSIGHT_STATUS
+}
+
+# Auto-refresh trigger: re-run insights after every N new entries.
+AUTO_REFRESH_EVERY = 5
+AUTO_REFRESH_FILE = None  # set after DATA_DIR is defined; see post-init below
+
+
+def _autorefresh_state_path() -> str:
+    return os.path.join(DATA_DIR, "_autorefresh.json")
+
+
+def _load_autorefresh_state() -> dict:
+    return load_file(_autorefresh_state_path(),
+                     default={"last_count": 0})
+
+
+def _save_autorefresh_state(state: dict) -> None:
+    save_file(_autorefresh_state_path(), state)
+
+
+def _set_insight_status(kind: str, status: str) -> None:
+    with INSIGHT_STATUS_LOCK:
+        INSIGHT_STATUS[kind] = status
+        if status == "idle":
+            INSIGHT_LAST_RUN[kind] = datetime.now().isoformat()
+
+
+def _run_insight_in_background(kind: str, fn, *args, **kwargs) -> None:
+    """Run an insight compute function in a background thread, updating
+    INSIGHT_STATUS as it goes. Safe to call multiple times — concurrent
+    runs of the same engine are coalesced (the 2nd call no-ops while the
+    1st is in flight)."""
+    with INSIGHT_STATUS_LOCK:
+        if INSIGHT_STATUS.get(kind) == "running":
+            return  # already in flight
+        INSIGHT_STATUS[kind] = "queued"
+
+    def worker():
+        try:
+            _set_insight_status(kind, "running")
+            fn(*args, **kwargs)
+        except Exception as e:
+            print(f"[insights/{kind}] background run failed: {e}")
+        finally:
+            _set_insight_status(kind, "idle")
+
+    t = threading.Thread(target=worker, name=f"insight-{kind}", daemon=True)
+    t.start()
+
+
+def _refresh_all_insights_async() -> None:
+    """Kick off all four engines concurrently in background threads."""
+    _run_insight_in_background("contradictions", lambda: compute_contradictions(window_days=60))
+    _run_insight_in_background("triggers",       lambda: compute_triggers(window_days=90))
+    _run_insight_in_background("wellbeing",      lambda: compute_wellbeing(window_days=14))
+    _run_insight_in_background("narrative",      lambda: compute_narrative(window_days=120))
+
+
+def _maybe_trigger_insight_refresh(entries_count: int) -> None:
+    """Called from /save. If we've crossed an AUTO_REFRESH_EVERY boundary
+    since the last auto-refresh, kick off a background refresh of all
+    four insight engines. No-op otherwise."""
+    try:
+        state = _load_autorefresh_state()
+        last = int(state.get("last_count", 0) or 0)
+        if entries_count - last >= AUTO_REFRESH_EVERY:
+            state["last_count"] = entries_count
+            _save_autorefresh_state(state)
+            _refresh_all_insights_async()
+    except Exception as e:
+        # Never let auto-refresh failures break /save.
+        print(f"[autorefresh] error: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -255,7 +361,8 @@ Schema:
   "intensity": integer 1-10,
   "summary": "one concise sentence, <= 20 words",
   "tags": ["2-4 lowercase single-word topic tags"],
-  "themes": ["1-3 short themes, 1-3 words each"]
+  "themes": ["1-3 short themes, 1-3 words each"],
+  "people": ["proper-name people mentioned by name in the entry. Use the form the writer used (e.g. 'Mom', 'Kabir', 'Vikram'). Omit if no one is named. Do NOT invent."]
 }}
 
 Entry:
@@ -276,13 +383,32 @@ JSON:"""
     summary = str(data.get("summary", "")).strip()[:280]
     tags = data.get("tags") or []
     themes = data.get("themes") or []
+    people = data.get("people") or []
     if isinstance(tags, str):
         tags = [t.strip() for t in tags.split(",")]
     if isinstance(themes, str):
         themes = [t.strip() for t in themes.split(",")]
+    if isinstance(people, str):
+        people = [p.strip() for p in people.split(",")]
     tags = [re.sub(r"[^a-z0-9\-]", "", str(t).lower())[:24] for t in tags if t][:5]
     tags = [t for t in tags if t]
     themes = [str(t).strip()[:40] for t in themes if t][:3]
+    # People are case-preserved (Title Case), de-duplicated, max 6
+    seen_people = set()
+    cleaned_people: List[str] = []
+    for p in people:
+        if not p: continue
+        name = re.sub(r"[^A-Za-z\- '’.]", "", str(p)).strip()
+        if not name or len(name) > 40:
+            continue
+        # Title case but keep all-caps initials etc.
+        key = name.lower()
+        if key in seen_people:
+            continue
+        seen_people.add(key)
+        cleaned_people.append(name)
+        if len(cleaned_people) >= 6:
+            break
 
     return {
         "emotion": emotion,
@@ -290,6 +416,7 @@ JSON:"""
         "summary": summary,
         "tags": tags,
         "themes": themes,
+        "people": cleaned_people,
     }
 
 
@@ -427,26 +554,41 @@ def retrieve_similar(query: str, items: List[dict], k: int = 5,
                      apply_recency: bool = True,
                      diversify: bool = True) -> List[dict]:
     """Embed the query, score by cosine × recency, return top k with MMR
-    diversification. Items missing an embedding are skipped — use
-    backfill_*_embeddings to populate them lazily."""
+    diversification. Items missing an embedding are skipped.
+
+    For items that have a `chunks` list (long journal entries that have been
+    semantically chunked), score is the MAX similarity across all chunks —
+    that way a long entry doesn't dilute itself, and the best-matching
+    paragraph wins for that entry."""
     qvec = embed(query)
     if not qvec:
         return []
     scored = []
     for it in items:
+        # Prefer chunk-level matching when available (long entries).
+        best_score = 0.0
+        chunks = it.get("chunks") or []
+        for c in chunks:
+            cvec = c.get("embedding")
+            if not cvec or c.get("embedding_version") != EMBED_VERSION:
+                continue
+            sc = cosine_similarity(qvec, cvec)
+            if sc > best_score:
+                best_score = sc
+        # Fall back to (or also consider) the whole-entry embedding.
         vec = it.get(embed_field)
-        if not vec:
-            continue
-        s = cosine_similarity(qvec, vec)
-        if s <= 0:
+        if vec and it.get("embedding_version") == EMBED_VERSION:
+            s_main = cosine_similarity(qvec, vec)
+            if s_main > best_score:
+                best_score = s_main
+        if best_score <= 0:
             continue
         if apply_recency:
-            s *= _recency_weight(it)
-        scored.append((s, it))
+            best_score *= _recency_weight(it)
+        scored.append((best_score, it))
     if not scored:
         return []
     scored.sort(key=lambda x: x[0], reverse=True)
-    # Look at a small over-fetch window for MMR to have room to diversify.
     head = scored[: max(k * 3, k + 2)]
     if diversify and len(head) > k:
         return _mmr_select(head, k, vector_field=embed_field)
@@ -462,33 +604,139 @@ def _chat_embed_text(turn: dict) -> str:
     return f"{turn.get('user','')}\n{turn.get('ai','')}".strip()
 
 
-# How many missing embeddings to fill in one chat request. Cold-start with
-# 200 entries used to hang the first chat as we synchronously embedded all of
-# them. We now top up at most this many per call — by the third or fourth
-# message everything is filled in.
+# Backfill budgets — capped per call so cold-starts don't hang.
 BACKFILL_BUDGET_PER_CALL = 12
+
+# Semantic chunking. Entries longer than this get split into paragraph-
+# sized chunks, each embedded individually. Retrieval max-pools over a
+# parent's chunks, so long entries don't dilute themselves.
+CHUNK_MIN_ENTRY_LEN = 400
+CHUNK_TARGET_LEN = 280
+
+
+def _chunk_text(text: str) -> List[str]:
+    """Split an entry into semantic chunks. Splits on blank lines first,
+    then on sentences if a paragraph is too long. Each chunk is roughly
+    CHUNK_TARGET_LEN chars."""
+    if not text or len(text) < CHUNK_MIN_ENTRY_LEN:
+        return [text] if text else []
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
+    out: List[str] = []
+    for p in paragraphs:
+        if len(p) <= CHUNK_TARGET_LEN * 1.5:
+            out.append(p)
+            continue
+        # Long paragraph — split on sentences
+        sentences = re.split(r"(?<=[.!?])\s+", p)
+        buf = ""
+        for s in sentences:
+            if not s:
+                continue
+            if len(buf) + len(s) + 1 > CHUNK_TARGET_LEN and buf:
+                out.append(buf.strip())
+                buf = s
+            else:
+                buf = (buf + " " + s).strip() if buf else s
+        if buf:
+            out.append(buf.strip())
+    # Avoid pathological short tails by merging trailing fragments
+    merged: List[str] = []
+    for c in out:
+        if merged and len(c) < 80:
+            merged[-1] = (merged[-1] + " " + c).strip()
+        else:
+            merged.append(c)
+    return merged
+
+
+def _needs_reembed(item: dict) -> bool:
+    """An item needs (re-)embedding when:
+      - it has no embedding at all, OR
+      - it was embedded by a different model (stale version)
+    """
+    if not item.get("embedding"):
+        return True
+    if item.get("embedding_version") != EMBED_VERSION:
+        return True
+    return False
+
+
+def _embed_entry_chunks(entry: dict) -> bool:
+    """Compute embeddings for an entry's chunks if the text is long enough.
+    Stores entry['chunks'] = [{'text': str, 'embedding': list, 'version': str}]
+    Returns True if anything changed."""
+    text = entry.get("text") or ""
+    if len(text) < CHUNK_MIN_ENTRY_LEN:
+        # Short entries don't need chunking; main embedding is enough.
+        if "chunks" in entry:
+            entry.pop("chunks", None)
+            return True
+        return False
+    chunks = _chunk_text(text)
+    if not chunks or len(chunks) <= 1:
+        return False
+
+    # Re-embed if version stale, missing, or chunk text changed
+    existing = entry.get("chunks") or []
+    same_text = (
+        len(existing) == len(chunks)
+        and all(c.get("text") == new_t and c.get("embedding_version") == EMBED_VERSION
+                for c, new_t in zip(existing, chunks))
+    )
+    if same_text:
+        return False
+
+    new_chunks: List[dict] = []
+    for c in chunks:
+        vec = embed(c)
+        if vec:
+            new_chunks.append({"text": c, "embedding": vec,
+                               "embedding_version": EMBED_VERSION})
+    if new_chunks:
+        entry["chunks"] = new_chunks
+        return True
+    return False
 
 
 def backfill_entry_embeddings(entries: List[dict],
                               budget: int = BACKFILL_BUDGET_PER_CALL) -> bool:
-    """Fill missing entry embeddings in place, capped per call. Newest entries
-    are filled first so what the user just wrote is searchable immediately."""
+    """Fill missing/stale entry embeddings in place, capped per call.
+    Newest entries first so the just-written one is searchable immediately.
+    Also chunk-embeds long entries."""
     changed = False
     filled = 0
     pending = sorted(
-        [e for e in entries if not e.get("embedding")],
+        [e for e in entries if _needs_reembed(e) or _entry_chunks_stale(e)],
         key=lambda e: e.get("timestamp", ""),
         reverse=True,
     )
     for e in pending:
         if filled >= budget:
             break
-        vec = embed(_entry_embed_text(e))
-        if vec:
-            e["embedding"] = vec
+        if _needs_reembed(e):
+            vec = embed(_entry_embed_text(e))
+            if vec:
+                e["embedding"] = vec
+                e["embedding_version"] = EMBED_VERSION
+                changed = True
+        if _embed_entry_chunks(e):
             changed = True
-            filled += 1
+        filled += 1
     return changed
+
+
+def _entry_chunks_stale(entry: dict) -> bool:
+    """True when chunk embeddings exist but are from a different model,
+    or text is long enough to need chunking but no chunks present."""
+    text = entry.get("text") or ""
+    chunks = entry.get("chunks") or []
+    if len(text) < CHUNK_MIN_ENTRY_LEN:
+        return False
+    if not chunks:
+        return True
+    if any(c.get("embedding_version") != EMBED_VERSION for c in chunks):
+        return True
+    return False
 
 
 def backfill_chat_embeddings(history: List[dict],
@@ -496,7 +744,7 @@ def backfill_chat_embeddings(history: List[dict],
     changed = False
     filled = 0
     pending = sorted(
-        [t for t in history if not t.get("embedding")],
+        [t for t in history if _needs_reembed(t)],
         key=lambda t: t.get("timestamp", ""),
         reverse=True,
     )
@@ -506,6 +754,7 @@ def backfill_chat_embeddings(history: List[dict],
         vec = embed(_chat_embed_text(t))
         if vec:
             t["embedding"] = vec
+            t["embedding_version"] = EMBED_VERSION
             changed = True
             filled += 1
     return changed
@@ -744,11 +993,12 @@ def build_context(message: str, memory: Dict[str, List[dict]]) -> str:
 
 
 def _strip_embedding(obj: dict) -> dict:
-    """Return a shallow copy without the 'embedding' field — we never want
-    to ship 768 floats per entry over the wire."""
+    """Return a shallow copy without embedding fields — we never want to
+    ship 1024-dim floats (or chunked variants of them) over the wire."""
     if not isinstance(obj, dict):
         return obj
-    return {k: v for k, v in obj.items() if k != "embedding"}
+    return {k: v for k, v in obj.items()
+            if k not in ("embedding", "embedding_version", "chunks")}
 
 
 # ---------------------------------------------------------------------------
@@ -772,15 +1022,22 @@ def save_journal(data: EntryInput):
         "intensity": analysis["intensity"],
         "tags": analysis["tags"],
         "themes": analysis["themes"],
+        "people": analysis.get("people", []),
         "user_mood": data.mood,
         "word_count": len(text.split()),
         "timestamp": datetime.now().isoformat(),
     }
     entry["embedding"] = embed(_entry_embed_text(entry))
+    entry["embedding_version"] = EMBED_VERSION
+    _embed_entry_chunks(entry)
 
     entries = load_file(JOURNAL_FILE)
     entries.append(entry)
     save_file(JOURNAL_FILE, entries)
+
+    # Auto-refresh insights after every N new entries (in the background).
+    _maybe_trigger_insight_refresh(entries_count=len(entries))
+
     return {"status": "saved", "entry": _strip_embedding(entry)}
 
 
@@ -832,9 +1089,13 @@ def update_entry(entry_id: str, data: EntryUpdate):
                     "intensity": analysis["intensity"],
                     "tags": analysis["tags"],
                     "themes": analysis["themes"],
+                    "people": analysis.get("people", e.get("people", [])),
                 })
-                # Text changed → embedding is stale; regenerate.
+                # Text changed → embedding + chunks are stale; regenerate.
                 e["embedding"] = embed(_entry_embed_text(e))
+                e["embedding_version"] = EMBED_VERSION
+                e.pop("chunks", None)
+                _embed_entry_chunks(e)
             if data.title is not None:
                 e["title"] = data.title.strip()
             if data.tags is not None:
@@ -3803,9 +4064,16 @@ def get_contradictions():
 
 
 @app.post("/insights/contradictions/refresh")
-def refresh_contradictions(window_days: int = 60):
-    """Recompute contradictions over the last N days and persist."""
-    return compute_contradictions(window_days=window_days)
+def refresh_contradictions(window_days: int = 60, wait: bool = False):
+    """Recompute contradictions over the last N days. Default is async —
+    kicks off a background thread and returns immediately; clients can
+    poll /insights/status. Pass ?wait=true for the old synchronous
+    behaviour (still useful from CLI / tests)."""
+    if wait:
+        return compute_contradictions(window_days=window_days)
+    _run_insight_in_background("contradictions",
+        lambda: compute_contradictions(window_days=window_days))
+    return {"status": "started", "kind": "contradictions"}
 
 
 # --- Emotional Trigger Map ------------------------------------------------
@@ -4064,8 +4332,12 @@ def get_triggers():
 
 
 @app.post("/insights/triggers/refresh")
-def refresh_triggers(window_days: int = 90):
-    return compute_triggers(window_days=window_days)
+def refresh_triggers(window_days: int = 90, wait: bool = False):
+    if wait:
+        return compute_triggers(window_days=window_days)
+    _run_insight_in_background("triggers",
+        lambda: compute_triggers(window_days=window_days))
+    return {"status": "started", "kind": "triggers"}
 
 
 # --- Wellbeing radar: burnout + negative-spiral ---------------------------
@@ -4318,8 +4590,12 @@ def get_wellbeing():
 
 
 @app.post("/insights/wellbeing/refresh")
-def refresh_wellbeing(window_days: int = 14):
-    return compute_wellbeing(window_days=window_days)
+def refresh_wellbeing(window_days: int = 14, wait: bool = False):
+    if wait:
+        return compute_wellbeing(window_days=window_days)
+    _run_insight_in_background("wellbeing",
+        lambda: compute_wellbeing(window_days=window_days))
+    return {"status": "started", "kind": "wellbeing"}
 
 
 # --- Identity & Narrative Layer -------------------------------------------
@@ -4442,8 +4718,40 @@ def get_narrative():
 
 
 @app.post("/insights/narrative/refresh")
-def refresh_narrative(window_days: int = 120):
-    return compute_narrative(window_days=window_days)
+def refresh_narrative(window_days: int = 120, wait: bool = False):
+    if wait:
+        return compute_narrative(window_days=window_days)
+    _run_insight_in_background("narrative",
+        lambda: compute_narrative(window_days=window_days))
+    return {"status": "started", "kind": "narrative"}
+
+
+# Combined refresh + status endpoints --------------------------------------
+
+@app.post("/insights/refresh-all")
+def refresh_all_insights():
+    """Kick off all four engines in background. Cheap — returns immediately."""
+    _refresh_all_insights_async()
+    return {"status": "started", "kinds": list(INSIGHT_STATUS.keys())}
+
+
+@app.get("/insights/status")
+def get_insights_status():
+    """Returns the current run state of each engine + when it last finished.
+    The frontend polls this to render the progress strip."""
+    with INSIGHT_STATUS_LOCK:
+        statuses = dict(INSIGHT_STATUS)
+        last_runs = dict(INSIGHT_LAST_RUN)
+    running = sum(1 for v in statuses.values() if v in ("queued", "running"))
+    return {
+        "engines": [
+            {"kind": k, "status": statuses[k], "last_run": last_runs.get(k)}
+            for k in statuses
+        ],
+        "running_count": running,
+        "total": len(statuses),
+        "any_running": running > 0,
+    }
 
 
 # --- Memory Graph ---------------------------------------------------------
@@ -4756,6 +5064,107 @@ def get_graph(limit: int = 250, min_weight: float = 0.22):
         "edge_count": len(edges),
         "cluster_count": sum(1 for c in clusters_out if c["id"] != "solo"),
     }
+
+
+# ---------------------------------------------------------------------------
+# People — relationship graph
+#
+# For each person mentioned in an entry, surface: mention count, dates,
+# typical journal mood on days you wrote about them, and which themes
+# co-occur. This is the relationships-side complement to the memory graph.
+# ---------------------------------------------------------------------------
+
+def _person_key(name: str) -> str:
+    """Normalise so 'Mom', 'mom', 'MOM' collapse to one node."""
+    return re.sub(r"[^a-z]", "", (name or "").lower())
+
+
+@app.get("/people")
+def get_people(min_mentions: int = 1, limit: int = 100):
+    """Return everyone mentioned across the journal with stats.
+
+    Each person carries:
+      - name (preferred form — the one the user wrote most often)
+      - mentions: count
+      - first_seen / last_seen: ISO dates
+      - top_emotion: most-common emotion across their entries
+      - avg_intensity: average intensity across their entries
+      - top_themes / top_tags: short list of co-occurring labels
+      - entries: short citation-pill list (last 8) so the UI can link in
+    """
+    entries = load_file(JOURNAL_FILE)
+    if not entries:
+        return {"people": [], "total": 0}
+
+    by_key: Dict[str, dict] = {}
+    for e in entries:
+        ppl = e.get("people") or []
+        if not ppl:
+            continue
+        ts = (e.get("timestamp") or "")
+        emo = (e.get("emotion") or "neutral").lower()
+        intensity = e.get("intensity")
+        themes = e.get("themes") or []
+        tags = e.get("tags") or []
+        for raw_name in ppl:
+            key = _person_key(raw_name)
+            if not key:
+                continue
+            rec = by_key.setdefault(key, {
+                "names": Counter(),
+                "mentions": 0,
+                "first_seen": ts,
+                "last_seen": ts,
+                "emotions": Counter(),
+                "intensities": [],
+                "themes": Counter(),
+                "tags": Counter(),
+                "entries": [],
+            })
+            rec["names"][raw_name] += 1
+            rec["mentions"] += 1
+            if ts:
+                if not rec["first_seen"] or ts < rec["first_seen"]:
+                    rec["first_seen"] = ts
+                if not rec["last_seen"] or ts > rec["last_seen"]:
+                    rec["last_seen"] = ts
+            rec["emotions"][emo] += 1
+            if isinstance(intensity, (int, float)):
+                rec["intensities"].append(float(intensity))
+            for t in themes: rec["themes"][str(t).lower()] += 1
+            for t in tags:   rec["tags"][str(t).lower()] += 1
+            rec["entries"].append({
+                "id": e["id"],
+                "date": ts[:10],
+                "emotion": emo,
+                "intensity": intensity,
+                "title": e.get("title") or e.get("summary") or "",
+            })
+
+    # Build the response, filter, sort by mentions desc
+    out: List[dict] = []
+    for key, rec in by_key.items():
+        if rec["mentions"] < min_mentions:
+            continue
+        preferred = rec["names"].most_common(1)[0][0]
+        avg_int = round(sum(rec["intensities"]) / len(rec["intensities"]), 2) if rec["intensities"] else None
+        rec["entries"].sort(key=lambda x: x.get("date", ""), reverse=True)
+        out.append({
+            "key": key,
+            "name": preferred,
+            "mentions": rec["mentions"],
+            "first_seen": rec["first_seen"][:10],
+            "last_seen":  rec["last_seen"][:10],
+            "top_emotion": rec["emotions"].most_common(1)[0][0] if rec["emotions"] else None,
+            "emotion_breakdown": rec["emotions"].most_common(),
+            "avg_intensity": avg_int,
+            "top_themes": [t for t, _ in rec["themes"].most_common(4)],
+            "top_tags":   [t for t, _ in rec["tags"].most_common(4)],
+            "entries": rec["entries"][:8],
+        })
+
+    out.sort(key=lambda p: -p["mentions"])
+    return {"people": out[:limit], "total": len(out)}
 
 
 # ---------------------------------------------------------------------------
