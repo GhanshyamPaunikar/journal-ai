@@ -3493,13 +3493,16 @@ Schema (JSON only, no prose, no fences):
         "candidate_count": len(candidates),
     }
     # If filters killed everything, surface a useful note rather than a blank.
+    # "No contradictions" is a real result — it usually means the stated
+    # intentions in the window were either followed through or aspirational
+    # rather than concrete.
     if not items:
         result["note"] = (
-            f"Found {len(candidates)} entries where you stated an intention, but "
-            f"the scan couldn't ground a clear contradiction between any of them "
-            f"and a later action. This engine is the most sensitive to model "
-            f"quality — try pulling a bigger one (e.g. `ollama pull qwen2.5:7b`) "
-            f"and set INNERBLOOM_MODEL before running uvicorn."
+            f"Found {len(candidates)} entries where you stated an intention, but no "
+            f"clear contradicting action surfaced in the window. That's often a "
+            f"good sign — it means what you said and what you did roughly line up. "
+            f"Re-running this scan after a few more entries usually surfaces "
+            f"something."
         )
     cache = _load_insights()
     cache["contradictions"] = result
@@ -3566,12 +3569,17 @@ def _entry_labels(entry: dict):
 
 def _candidate_triggers(entries: List[dict], min_count: int = 3,
                         min_abs_delta: float = 1.0) -> List[dict]:
-    """Stats pass: find labels whose average mood-score deviates from the
-    user's baseline by at least `min_abs_delta`. Returns sorted by |delta|."""
+    """Stats pass: find labels whose average mood-score is meaningfully
+    above or below neutral (0). Returns sorted by |delta|.
+
+    We use 0 — not the user's per-window mean — as the reference. If a
+    user has been mostly anxious lately, their mean would drift very
+    negative, which would flip "anxious-7 entries" into a 'positive'
+    delta relative to it. That direction-by-baseline is mathematically
+    correct but reads wrong. Anchoring at neutral (0) gives the intuitive
+    meaning: positive = uplifting, negative = draining."""
     if not entries:
         return []
-    scores = [_mood_score(e) for e in entries]
-    baseline = sum(scores) / len(scores)
 
     by_label_scores: Dict[str, List[float]] = defaultdict(list)
     by_label_entries: Dict[str, List[dict]] = defaultdict(list)
@@ -3586,7 +3594,7 @@ def _candidate_triggers(entries: List[dict], min_count: int = 3,
         if len(slist) < min_count:
             continue
         avg = sum(slist) / len(slist)
-        delta = avg - baseline
+        delta = avg  # baseline anchored at 0 (neutral)
         if abs(delta) < min_abs_delta:
             continue
         ents = sorted(by_label_entries[label],
@@ -3595,7 +3603,7 @@ def _candidate_triggers(entries: List[dict], min_count: int = 3,
             "label": label,
             "count": len(slist),
             "avg_mood": round(avg, 2),
-            "baseline": round(baseline, 2),
+            "baseline": 0.0,
             "delta": round(delta, 2),
             "direction": "negative" if delta < 0 else "positive",
             "entry_ids": [e["id"] for e in ents[:6]],
@@ -3694,10 +3702,6 @@ Schema (JSON exactly, no fences):
         if not evidence:
             continue  # anti-hallucination: must cite a real entry
 
-        direction = str(it.get("direction", "")).lower()
-        if direction not in ("negative", "positive"):
-            direction = "negative" if "neg" in direction else "positive"
-
         category = str(it.get("category", "other")).lower().strip()
         if category not in TRIGGER_CATEGORIES:
             category = "other"
@@ -3710,6 +3714,31 @@ Schema (JSON exactly, no fences):
             if any(eid in ev_ids for eid in c["entry_ids"]):
                 match = c
                 break
+
+        # If the LLM's evidence doesn't link back to any of the stats
+        # candidates, the label is hallucinated — Qwen 7B was generating
+        # "Calls with mom" then citing a skating entry. Drop it.
+        if not match:
+            continue
+
+        # Additional sanity: the LLM's label should share at least one
+        # significant word with the candidate's raw label (e.g. "mom"
+        # appears in "Calls with mom"). If not, the LLM relabeled
+        # something completely different.
+        cand_label_words = set(re.findall(r"[a-z]{3,}", match["label"].lower()))
+        label_words = set(re.findall(r"[a-z]{3,}", label.lower()))
+        if cand_label_words and label_words and not (cand_label_words & label_words):
+            # Tolerate when the candidate is a single theme phrase and the
+            # LLM kept all its words.
+            theme_words = set(re.findall(r"[a-z]{3,}", " ".join(
+                ent.get("title", "") + " " + " ".join(ent.get("tags", []))
+                for ent in [by_id.get(eid) for eid in match["entry_ids"]] if ent
+            )))
+            if not (theme_words & label_words):
+                continue
+
+        # Direction comes from the matched candidate (stats-driven, accurate).
+        direction = match["direction"]
 
         items.append({
             "label": label[:80],
@@ -3924,10 +3953,28 @@ Write the JSON exactly:
 """
     raw = call_llama(prompt, system=system, temperature=0.4, timeout=120)
     obj = extract_json(raw) or {}
+
+    def _clean(s: str) -> str:
+        """Strip [id...] tokens the model leaves in literally, plus banned
+        chatbot phrases. The model is supposed to use [cite:xxx] which the
+        chat path strips elsewhere; in wellbeing summaries it sometimes
+        writes [id8] / [id85b286f8] / [idXXXX] as placeholders or pseudo-
+        citations. Wellbeing has its own evidence pills below the summary,
+        so we just drop the inline tokens."""
+        out = s or ""
+        # Match [id...] with any alphanumeric tail (hex too): [id8], [id85b286f8]
+        out = re.sub(r"\[id[a-z0-9]*\]", "", out, flags=re.IGNORECASE)
+        # Some models write "[id=85b286f8]" — same fate.
+        out = re.sub(r"\[id=[a-z0-9]+\]", "", out, flags=re.IGNORECASE)
+        # Clean spaces left behind (" .", " ,", double-space)
+        out = re.sub(r"\s+([.,;:!?])", r"\1", out)
+        out = re.sub(r"\s{2,}", " ", out)
+        return scrub_banned_phrases(out).strip()[:400]
+
     return {
-        "burnout_summary": str(obj.get("burnout_summary", "")).strip()[:400] or
+        "burnout_summary": _clean(str(obj.get("burnout_summary", ""))) or
                            "Some signals of burnout — see the entries below.",
-        "spiral_summary": str(obj.get("spiral_summary", "")).strip()[:400] or
+        "spiral_summary": _clean(str(obj.get("spiral_summary", ""))) or
                           "A short downward trend — worth a moment of attention.",
     }
 
