@@ -553,7 +553,9 @@ body {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 8px 12px; border-bottom: 1px solid var(--border);
 }
-.mode-switch { display: inline-flex; background: var(--bg-elev); border: 1.5px solid var(--border); border-radius: 12px; padding: 3px; }
+/* .mode-switch retained for back-compat with any cached state; the
+   General toggle is no longer rendered. */
+.mode-switch { display: none; }
 .mode-switch button {
   background: transparent; border: 0; padding: 6px 14px; border-radius: 9px;
   font: inherit; font-size: 12.5px; font-weight: 500; color: var(--text-muted);
@@ -1659,10 +1661,6 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
       <section class="view" id="view-chat">
         <div class="chat-wrap">
           <div class="chat-bar">
-            <div class="mode-switch" role="tablist" aria-label="Chat mode">
-              <button type="button" data-mode="journal" class="active">Journal</button>
-              <button type="button" data-mode="general">General</button>
-            </div>
             <div class="persona-picker" id="persona-picker" role="radiogroup" aria-label="Voice">
               <button type="button" class="persona-pill active" data-persona="companion">
                 <span class="p-name">Companion</span>
@@ -1678,7 +1676,7 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
               </button>
             </div>
             <div class="spacer"></div>
-            <span class="hint" id="chat-mode-hint">Grounded in your entries</span>
+            <span class="hint">Grounded in your entries</span>
           </div>
           <div class="chat-feed" id="chat-feed">
             <div class="chat-welcome" id="chat-welcome">
@@ -2580,32 +2578,19 @@ const PERSONA_ALIASES = {
   calm_therapist: "companion",
   analytical_observer: "observer",
 };
-let chatMode = localStorage.getItem("innerbloom.chatMode") || "journal";
+// Chat is always journal mode now — the General toggle served no purpose
+// for a journal app. Kept the `chatMode` variable so existing call sites
+// keep working without changing every fetch payload.
+const chatMode = "journal";
 let chatPersona = localStorage.getItem("innerbloom.chatPersona") || "companion";
 if (PERSONA_ALIASES[chatPersona]) chatPersona = PERSONA_ALIASES[chatPersona];
 
-function applyChatMode() {
-  $$(".mode-switch button").forEach(b => {
-    b.classList.toggle("active", b.dataset.mode === chatMode);
-  });
-  const hint = $("chat-mode-hint");
-  if (hint) hint.textContent = chatMode === "journal"
-    ? "Grounded in your entries"
-    : "General assistant — journal context off";
-}
 function applyPersona() {
   $$(".persona-pill").forEach(b => {
     b.classList.toggle("active", b.dataset.persona === chatPersona);
     b.setAttribute("aria-checked", b.dataset.persona === chatPersona ? "true" : "false");
   });
 }
-$$(".mode-switch button").forEach(b => {
-  b.addEventListener("click", () => {
-    chatMode = b.dataset.mode;
-    localStorage.setItem("innerbloom.chatMode", chatMode);
-    applyChatMode();
-  });
-});
 $$(".persona-pill").forEach(b => {
   b.addEventListener("click", () => {
     chatPersona = b.dataset.persona;
@@ -2613,7 +2598,6 @@ $$(".persona-pill").forEach(b => {
     applyPersona();
   });
 });
-applyChatMode();
 applyPersona();
 
 // --- scroll stickiness -----------------------------------------------------
@@ -2797,12 +2781,10 @@ async function sendChat(text) {
   addMsg("user", text);
   chatInput.value = ""; chatInput.style.height = "auto";
 
-  // Journal mode runs the agent loop with live steps. General mode is a
-  // straight assistant — no journal context, no tools.
-  if (chatMode === "journal") {
-    return sendChatAgent(text);
-  }
-  return sendChatStream(text);
+  // Always runs the agent loop with live steps. Journal context is built
+  // in; the LLM classifier on the backend decides whether to actually
+  // pull from it for any given message.
+  return sendChatAgent(text);
 }
 
 // --- general-mode: simple streamed reply ----------------------------------

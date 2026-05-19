@@ -1126,13 +1126,132 @@ _BREVITY_RX = re.compile(
 
 
 def detect_brevity(msg: str) -> Optional[str]:
-    """If the user explicitly asks for a short reply, return a length hint
-    we can splice into the drafter prompt."""
+    """Regex fallback for brevity detection — see classify_message for the
+    primary LLM-based path."""
     if not msg:
         return None
     if _BREVITY_RX.search(msg):
         return "The user explicitly asked for a SHORT reply. Maximum 2 sentences. No bullet lists. No preamble."
     return None
+
+
+# ---------------------------------------------------------------------------
+# Chat classifier — LLM-based replacement for the three regex helpers above.
+#
+# One small structured call per turn that tells us:
+#   - small_talk: is this a greeting / thanks / casual one-liner that
+#                 shouldn't trigger journal retrieval at all?
+#   - follow_up:  is this an implicit reference to the previous turn
+#                 ("tell me more", "but why", "what about that")?
+#   - brevity:    did they ask for a short reply, however phrased?
+#   - intent:     a one-line semantic gist we can use to rewrite the
+#                 retrieval query when follow_up=true.
+#
+# Defaults to the regex helpers if the call fails / times out / parses bad.
+# ---------------------------------------------------------------------------
+
+_CLASSIFIER_PROMPT_TEMPLATE = """You are a fast classifier for a personal-journal chat app. Decide three things about the user's message.
+
+Output STRICT JSON only — no prose, no fences. Schema:
+{{
+  "small_talk":  true | false,
+  "follow_up":   true | false,
+  "brevity":     true | false,
+  "intent":      "5-12 word gist of what they really want, in third person"
+}}
+
+Definitions (read carefully):
+- small_talk: hi / hello / good morning / thanks / yo / bye / how are you / a one-line emoji reaction / a casual ack ("got it", "cool") / a non-question utterance that doesn't need their journal data to answer.
+- follow_up: depends on the previous turn for meaning. Examples: "tell me more", "but why", "and that?", "elaborate", "say more about the running thing", "go on". A message that names a specific concrete topic is NOT a follow-up even if short.
+- brevity: they asked for a short / brief / tldr / one-line / summary reply, however phrased. "Give me the headline", "don't overexplain", "make it punchy", "in short" all count.
+- intent: a short paraphrase of what they're actually asking. Use third person. Keep it under 14 words. If small_talk=true, just write "casual greeting" or similar.
+
+{prev_block}USER MESSAGE: \"\"\"{msg}\"\"\"
+
+JSON:"""
+
+
+def _build_classifier_prev_block(history: List[dict]) -> str:
+    """Give the classifier just enough context to recognise a follow-up."""
+    if not history:
+        return ""
+    prev = history[-1]
+    u = (prev.get("user") or "").strip()
+    a = (prev.get("ai") or "").strip()
+    if not u:
+        return ""
+    return (
+        "PREVIOUS TURN (for follow-up detection only — do NOT classify it, just use as context):\n"
+        f"  User:       {u[:140]}\n"
+        f"  Innerbloom: {a[:200]}\n\n"
+    )
+
+
+def classify_message(msg: str, history: List[dict]) -> Dict[str, Any]:
+    """LLM-based intent classifier with regex fallback.
+
+    Returns:
+        {
+          "small_talk": bool,
+          "follow_up":  bool,
+          "brevity":    bool,
+          "intent":     str,         # 5-12 word gist
+          "source":     "llm" | "fallback",
+        }
+    """
+    fallback = {
+        "small_talk": is_smalltalk(msg),
+        "follow_up":  _is_followup(msg),
+        "brevity":    bool(detect_brevity(msg)),
+        "intent":     msg[:120],
+        "source":     "fallback",
+    }
+    if not msg or not msg.strip():
+        return fallback
+
+    prompt = _CLASSIFIER_PROMPT_TEMPLATE.format(
+        prev_block=_build_classifier_prev_block(history),
+        msg=msg.strip()[:600],
+    )
+    system = "You are a fast, strict JSON classifier. Output JSON only."
+    try:
+        raw = call_llama(prompt, system=system, temperature=0.0, timeout=15)
+        obj = extract_json(raw) or {}
+        if not isinstance(obj, dict):
+            return fallback
+        # Validate + coerce
+        out = {
+            "small_talk": bool(obj.get("small_talk")),
+            "follow_up":  bool(obj.get("follow_up")),
+            "brevity":    bool(obj.get("brevity")),
+            "intent":     str(obj.get("intent") or msg[:120]).strip()[:200],
+            "source":     "llm",
+        }
+        # Sanity: if everything came back false AND intent looks empty,
+        # something parsed wrong — fall back.
+        if not out["intent"]:
+            return fallback
+        return out
+    except Exception:
+        return fallback
+
+
+def classifier_followup_query(msg: str, classified: Dict[str, Any], history: List[dict]) -> str:
+    """Rewrite the retrieval query for follow-up messages.
+
+    If the classifier flagged follow_up=true, we combine the previous user
+    turn with the classifier's `intent` to give the retriever something
+    concrete to embed. For non-follow-ups we just embed the original message.
+    """
+    if not classified.get("follow_up") or not history:
+        return msg
+    prev_user = (history[-1].get("user") or "").strip()
+    intent = (classified.get("intent") or "").strip()
+    if not prev_user:
+        return intent or msg
+    if intent and intent.lower() not in prev_user.lower():
+        return f"{prev_user} {intent}"
+    return prev_user
 
 
 def clean_reply(reply: str) -> str:
@@ -1463,7 +1582,8 @@ def _summarize_tool_result(name: str, result: Any) -> str:
     return "ok"
 
 
-def build_agent_prompt(message: str, observations: List[dict]) -> str:
+def build_agent_prompt(message: str, observations: List[dict],
+                        prior_turn: Optional[dict] = None) -> str:
     """Assemble the drafter prompt from the user's message + tool observations."""
     lines: List[str] = []
     for o in observations:
@@ -1499,10 +1619,25 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
         lines.append("")
     obs_block = "\n".join(lines).strip() or "(no tool results — answer from what you already know about the user from context)"
 
+    # When the message is a follow-up ('but why', 'tell me more'), the
+    # drafter needs the previous turn to resolve references like 'that'.
+    prior_block = ""
+    if prior_turn:
+        prior_user = (prior_turn.get("user") or "").strip()
+        prior_ai = (prior_turn.get("ai") or "").strip()
+        if prior_user or prior_ai:
+            prior_block = (
+                "=== The conversation so far (most recent turn) ===\n"
+                f"User: {prior_user[:200]}\n"
+                f"You (Innerbloom): {prior_ai[:400]}\n\n"
+                "The user is following up on that — when they say 'that', 'more', 'why', they mean it about the above.\n\n"
+            )
+
     return (
         "=== Background (what I happen to know about this person from their journal) ===\n"
         f"{obs_block}\n\n"
-        "=== Their question ===\n"
+        f"{prior_block}"
+        "=== Their current message ===\n"
         f"{message}\n\n"
         "Now reply. RULES:\n"
         "1. ANSWER THEIR QUESTION. That's the only job. Anything that doesn't help answer it goes unused.\n"
@@ -1516,7 +1651,9 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
         "5. If you do cite, use [cite:id] format with the short id shown above. One or two citations max, "
         "not a parade.\n"
         "6. Don't summarise their data back at them. Don't 'connect dots' that don't need connecting. "
-        "If their question is simple, your reply is simple.\n\n"
+        "If their question is simple, your reply is simple.\n"
+        "7. If this is a follow-up to the conversation above, BUILD ON what you already said — "
+        "don't ask 'what do you mean' or restate the previous reply.\n\n"
         "Innerbloom:"
     )
 
@@ -1540,6 +1677,11 @@ def chat_agent(data: ChatInput):
     system = build_system_prompt("journal", personality)
     safety = crisis_check(msg)
 
+    # Classify the message once. The result drives small-talk fast-path,
+    # brevity hint, and follow-up retrieval rewriting.
+    _history_for_class = load_file(CHAT_FILE)
+    classified = classify_message(msg, _history_for_class)
+
     def event(obj: dict) -> str:
         return json.dumps(obj) + "\n"
 
@@ -1548,10 +1690,8 @@ def chat_agent(data: ChatInput):
         if safety:
             yield event({"type": "safety", "safety": safety})
 
-        # 1a) Small-talk fast-path. "Good morning" / "hi" / "thanks" shouldn't
-        # cause us to invoke the agent loop, pull journal context, or attach
-        # citations. It's just a greeting — reply as a person would.
-        if is_smalltalk(msg):
+        # 1a) Small-talk fast-path — classifier says this is a casual one-liner.
+        if classified.get("small_talk"):
             yield event({"type": "manifest", "candidates": [],
                          "mode": "journal", "personality": personality})
             smalltalk_system = (
@@ -1578,10 +1718,13 @@ def chat_agent(data: ChatInput):
             yield event({"type": "done", "citations": []})
             return
 
-        # 2) Planning step
+        # 2) Planning step. For follow-up questions, hand the planner a
+        # combined query so it doesn't search the journal for the literal
+        # phrase "tell me more".
+        planner_msg = classifier_followup_query(msg, classified, _history_for_class) if classified.get("follow_up") else msg
         yield event({"type": "step", "id": "plan", "kind": "plan",
                      "label": "Reading the question", "status": "running"})
-        plan = plan_tools(msg)
+        plan = plan_tools(planner_msg)
         yield event({"type": "step", "id": "plan", "kind": "plan",
                      "label": "Reading the question", "status": "done",
                      "detail": plan.get("thinking") or "—"})
@@ -1660,13 +1803,19 @@ def chat_agent(data: ChatInput):
         yield event({"type": "manifest", "candidates": candidates,
                      "mode": "journal", "personality": personality})
 
-        # 5) Drafter — streams tokens. If the user asked for brevity, splice
-        # an extra length constraint into the system prompt for this call.
-        brevity_hint = detect_brevity(msg)
+        # 5) Drafter — streams tokens. Brevity hint comes from the
+        # classifier (or its regex fallback).
+        brevity_hint = (
+            "The user explicitly asked for a SHORT reply. Maximum 2 sentences. "
+            "No bullet lists. No preamble."
+            if classified.get("brevity") else None
+        )
         drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
         yield event({"type": "step", "id": "draft", "kind": "draft",
                      "label": "Drafting the reply", "status": "running"})
-        prompt = build_agent_prompt(msg, observations)
+        # For follow-up messages, give the drafter the prior turn so 'that' / 'more' resolves.
+        _prior = _history_for_class[-1] if (classified.get("follow_up") and _history_for_class) else None
+        prompt = build_agent_prompt(msg, observations, prior_turn=_prior)
         collected: List[str] = []
         for chunk in call_llama_stream(prompt, system=drafter_system, temperature=0.6):
             collected.append(chunk)
@@ -1713,9 +1862,11 @@ def chat(data: ChatInput):
     system = build_system_prompt(mode, personality)
 
     safety = crisis_check(msg)
+    history = load_file(CHAT_FILE)
+    classified = classify_message(msg, history)
 
     # Small-talk fast path — skip journal retrieval entirely.
-    if is_smalltalk(msg) and mode == "journal":
+    if classified.get("small_talk") and mode == "journal":
         smalltalk_system = (
             system +
             "\n\nThe user just sent a casual greeting or short conversational message. "
@@ -1730,15 +1881,21 @@ def chat(data: ChatInput):
             "smalltalk": True, "timestamp": datetime.now().isoformat(),
         }
         turn["embedding"] = embed(_chat_embed_text(turn))
-        history = load_file(CHAT_FILE); history.append(turn); save_file(CHAT_FILE, history)
+        history.append(turn); save_file(CHAT_FILE, history)
         return {"reply": reply, "citations": [], "safety": safety,
                 "turn": _strip_embedding(turn)}
 
-    memory = _chat_memory_for_mode(msg, mode)
+    # Follow-up: retrieve against the combined prior-turn + intent so the
+    # retriever doesn't search for "tell me more" literally.
+    retrieval_query = classifier_followup_query(msg, classified, history) if classified.get("follow_up") else msg
+    memory = _chat_memory_for_mode(retrieval_query, mode)
     relevant = memory["entries"]
     prompt = build_context(msg, memory)
 
-    brevity_hint = detect_brevity(msg)
+    brevity_hint = (
+        "The user explicitly asked for a SHORT reply. Maximum 2 sentences. No bullet lists. No preamble."
+        if classified.get("brevity") else None
+    )
     drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
     raw = call_llama(prompt, system=drafter_system, temperature=0.6)
     citations = extract_citations(raw, relevant)
@@ -1756,7 +1913,6 @@ def chat(data: ChatInput):
     }
     turn["embedding"] = embed(_chat_embed_text(turn))
 
-    history = load_file(CHAT_FILE)
     history.append(turn)
     save_file(CHAT_FILE, history)
     return {
@@ -1778,7 +1934,10 @@ def chat_stream(data: ChatInput):
     system = build_system_prompt(mode, personality)
 
     safety = crisis_check(msg)
-    memory = _chat_memory_for_mode(msg, mode)
+    history_for_class = load_file(CHAT_FILE)
+    classified = classify_message(msg, history_for_class)
+    retrieval_query = classifier_followup_query(msg, classified, history_for_class) if classified.get("follow_up") else msg
+    memory = _chat_memory_for_mode(retrieval_query, mode)
     relevant = memory["entries"]
     prompt = build_context(msg, memory)
 
@@ -1800,7 +1959,10 @@ def chat_stream(data: ChatInput):
             "personality": personality,
         }
         yield "\x1e" + json.dumps(manifest) + "\n"  # record separator
-        brevity_hint = detect_brevity(msg)
+        brevity_hint = (
+            "The user explicitly asked for a SHORT reply. Maximum 2 sentences. No bullet lists. No preamble."
+            if classified.get("brevity") else None
+        )
         drafter_system = system + ("\n\n" + brevity_hint if brevity_hint else "")
         for chunk in call_llama_stream(prompt, system=drafter_system, temperature=0.6):
             collected.append(chunk)
