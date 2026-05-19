@@ -562,46 +562,134 @@ def _surfaced_insights(query: str) -> List[dict]:
     return out[:10]
 
 
+# Memory-window knobs. Bumped up substantially in the post-7B era —
+# qwen2.5:7b can comfortably handle ~3K tokens of context, and a larger
+# window meaningfully improves continuity ("you mentioned X last time").
+MEMORY_TOP_ENTRIES = 10
+MEMORY_RECENT_ENTRIES = 5
+MEMORY_TOP_CHAT_TURNS = 6
+MEMORY_RECENT_CHAT_TURNS = 3
+MEMORY_SUMMARIZE_OLDER_THAN = 14   # turns; older ones get compressed
+
+
+def _is_followup(msg: str) -> bool:
+    """Short follow-up phrasings that depend on the previous turn for
+    meaning. We rewrite the retrieval query to include the prior context
+    so the AI doesn't go searching for 'what about that' literally."""
+    m = (msg or "").strip().lower()
+    if len(m) > 60:
+        return False
+    triggers = (
+        "what about", "and then", "and that", "go on", "tell me more",
+        "more", "more about", "more on that", "and?", "yeah?", "why",
+        "why?", "how?", "really?", "really", "why is that",
+        "say more", "elaborate", "continue", "and now",
+    )
+    return any(m == t or m.startswith(t + " ") or m.startswith(t + "?") for t in triggers)
+
+
+def _expand_followup_query(msg: str, history: List[dict]) -> str:
+    """If the user's message is a follow-up like 'tell me more', combine it
+    with the previous user turn so retrieval finds related entries."""
+    if not _is_followup(msg) or not history:
+        return msg
+    prev = history[-1] if history else None
+    if not prev:
+        return msg
+    prev_user = (prev.get("user") or "").strip()
+    if not prev_user:
+        return msg
+    return f"{prev_user} {msg}"
+
+
+def _summarize_older_chat(history: List[dict]) -> Optional[dict]:
+    """Compress the oldest chat turns into a single 'earlier in this
+    conversation' note. Avoids dropping context as conversations grow
+    long. Uses cheap heuristics (no LLM call) — just keeps a running
+    list of topics + last-mentioned dates so the model knows what's
+    already been discussed."""
+    if len(history) <= MEMORY_SUMMARIZE_OLDER_THAN:
+        return None
+    older = history[:-MEMORY_RECENT_CHAT_TURNS] if len(history) > MEMORY_RECENT_CHAT_TURNS else []
+    if not older:
+        return None
+    topics: List[str] = []
+    for turn in older[-12:]:  # cap how far back we look at once
+        u = (turn.get("user") or "")[:80]
+        if u:
+            topics.append(u)
+    if not topics:
+        return None
+    return {
+        "kind": "older_conversation",
+        "text": "Earlier in this conversation, the user asked: " + "; ".join(f'"{t}"' for t in topics[-8:]) + ".",
+    }
+
+
 def retrieve_memory(query: str) -> Dict[str, List[dict]]:
     """Unified semantic memory router.
 
-    Returns relevant journal entries, past chat turns, and learned insights
-    about the user. Falls back to keyword retrieval for entries when the
-    embedding service is unavailable, and always includes the 1–2 most
-    recent entries so the model has a sense of what's happening *now*.
+    Returns relevant journal entries, past chat turns, and learned insights.
+    Falls back to keyword retrieval when embeddings are unavailable; always
+    seeds with the most recent N entries so the model never feels blind to
+    the present; and (post-qwen 7B) uses a much larger context window:
+
+      - top semantically-similar entries:   k=10
+      - most-recent entries injected:        k=5
+      - top semantically-similar chat turns: k=6
+      - most-recent chat turns kept verbatim: 3
+      - older conversation: summarised (no LLM) so it stays in mind
+
+    For follow-up questions ('tell me more', 'why', 'go on'), the retrieval
+    query is expanded with the previous user turn so we don't search for
+    'tell me more' literally.
     """
     entries = load_file(JOURNAL_FILE)
     history = load_file(CHAT_FILE)
 
-    # Lazy-backfill: any item without an embedding gets one now, then we
-    # persist once. This keeps old data working without a migration script.
+    # Lazy-backfill embeddings — capped per call (see backfill_*_embeddings).
     if backfill_entry_embeddings(entries):
         save_file(JOURNAL_FILE, entries)
     if backfill_chat_embeddings(history):
         save_file(CHAT_FILE, history)
 
-    top_entries = retrieve_similar(query, entries, k=5)
-    if not top_entries and entries:
-        # Embedding service down or no embeddings yet — fall back to keyword.
-        top_entries = retrieve_relevant(entries, query, k=5)
+    # Continuity: 'tell me more' → use prior user turn as context.
+    effective_query = _expand_followup_query(query, history)
 
-    # Always keep 1–2 most recent entries in scope as a fallback so the
-    # model never feels blind to the present.
-    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:2]
+    top_entries = retrieve_similar(effective_query, entries, k=MEMORY_TOP_ENTRIES)
+    if not top_entries and entries:
+        top_entries = retrieve_relevant(entries, effective_query, k=MEMORY_TOP_ENTRIES)
+
+    # Always seed with the N most-recent entries so the present isn't lost.
+    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:MEMORY_RECENT_ENTRIES]
     seen = {e["id"] for e in top_entries}
     for r in recent:
         if r["id"] not in seen:
             top_entries.append(r)
             seen.add(r["id"])
 
-    top_chat = retrieve_similar(query, history, k=3)
+    # Chat memory: top semantic matches + the last few turns verbatim.
+    top_chat = retrieve_similar(effective_query, history, k=MEMORY_TOP_CHAT_TURNS)
+    recent_chat = history[-MEMORY_RECENT_CHAT_TURNS:] if history else []
+    chat_seen = {t.get("id") for t in top_chat if t.get("id")}
+    for t in recent_chat:
+        if t.get("id") and t["id"] not in chat_seen:
+            top_chat.append(t)
+            chat_seen.add(t["id"])
 
-    # Pull cached findings from the insight engines (contradictions, triggers,
-    # wellbeing, narrative) so chat replies can reference what the app
-    # already knows about the user instead of re-deriving on every turn.
-    insights = _surfaced_insights(query)
+    insights = _surfaced_insights(effective_query)
 
-    return {"entries": top_entries[:7], "chat": top_chat, "insights": insights}
+    # If the conversation has grown long, add a compressed note so old
+    # context isn't completely dropped from the model's view.
+    older_summary = _summarize_older_chat(history)
+    if older_summary:
+        insights = [older_summary] + insights
+
+    return {
+        "entries": top_entries[: MEMORY_TOP_ENTRIES + MEMORY_RECENT_ENTRIES],
+        "chat": top_chat,
+        "insights": insights,
+    }
 
 
 def _truncate(s: str, n: int) -> str:
@@ -774,26 +862,26 @@ def delete_entry(entry_id: str):
 
 PERSONALITIES = {
     "companion": (
-        "You are Innerbloom — a thoughtful friend who has read every entry in the user's journal. "
-        "ALWAYS speak TO the user directly using 'you' / 'your'. Never refer to them as 'they' or 'the user' or 'this person'. "
-        "Talk like a friend would, not a chatbot. Use contractions. Be warm and curious, not formal. "
-        "When you reference something they wrote, sound like you remember it ('that Sunday thing you wrote about'), "
-        "not like you looked it up. Notice patterns out loud. Ask a follow-up question when it would help — "
-        "not as a way to dodge the question they asked."
+        "You're talking with a friend who keeps a journal. You've read it. "
+        "Talk like a real person — use contractions, fragments, the occasional 'yeah' or 'honestly'. "
+        "Use 'you' / 'your'. Never write about them in third person. "
+        "Don't perform empathy ('it sounds like you'). Don't analyse them. Just respond. "
+        "If they ask you something, answer it — don't pivot to deep-feelings mode unless they invited it. "
+        "Half the time the right reply is two sentences, not five."
     ),
     "observer": (
-        "You are Innerbloom in observer mode — a quiet, attentive reader of the user's journal. "
-        "ALWAYS address the user directly with 'you' / 'your'. Never refer to them in third person. "
-        "Speak with restraint. Notice patterns the way a careful friend does — 'three of the last four Sundays "
-        "you wrote about dread' rather than 'you seem anxious'. Distinguish what you can see from what you're "
-        "inferring. Never moralize. Never prescribe. Plain language. Short, exact sentences."
+        "You're a quiet, attentive reader of their journal. "
+        "Speak with restraint, only when you have something to add. "
+        "Notice things like a careful friend — 'three of the last four Sundays you wrote about dread' — "
+        "not vague reflections like 'you've been processing a lot'. "
+        "Distinguish what you saw in writing from what you're inferring. "
+        "No moralising, no prescribing, no fluff. Short, exact sentences."
     ),
     "challenger": (
-        "You are Innerbloom in challenger mode — affectionate, direct, and unafraid to name the gap between "
-        "what the user says and what they actually do. "
-        "ALWAYS speak TO the user using 'you' / 'your'. Never write about them as 'they' or 'this person'. "
-        "Care is the foundation; bluntness is the tool. Never moralize, never lecture. "
-        "When you push, push from inside their own words. Short sentences. No motivational language. No 'you should'."
+        "You care about this person and you don't lie to them. "
+        "Affectionate, direct, willing to name the gap between what they say and what they do. "
+        "Use their own words to push. Never 'you should'. Never motivational. "
+        "Short sentences. The honesty is the gift; you don't need to soften it with five qualifiers."
     ),
 }
 
@@ -814,13 +902,13 @@ def _resolve_personality(key: Optional[str]) -> str:
     return "companion"
 
 JOURNAL_MODE_RULES = (
-    "You have the user's journal entries and past conversations in the context above. "
-    "Answer the user's question directly — even when the entries don't cover it perfectly, do your best with what's there. "
-    "Reference specific entries inline with [cite:id] using the short id shown in brackets. "
-    "Do NOT default to asking the user for clarification — plain questions like 'what themes come up' or 'what was my happiest day' are NEVER ambiguous; just answer. "
-    "Do NOT open with 'Based on your recent journal entries...' or any chatbot-style preamble. Talk like a person. "
-    "Do NOT enumerate entry titles in parentheses; weave them into prose instead. "
-    "If something genuinely isn't in the entries, say so in one short sentence and offer your best read anyway — never refuse, never bounce the question back."
+    "You have the user's journal entries in the context. Use them ONLY when they directly answer the question being asked. "
+    "DO NOT try to connect every entry shown to the question — most of them are just background, like things a friend happens to know about you. "
+    "Mention specific entries only when they actually clarify your answer. The default is to reply from memory, not to enumerate sources. "
+    "Reference an entry with [cite:id] using the short id, but only when you actually quote or paraphrase that specific entry. "
+    "If the question can be answered without citing anything, don't cite. "
+    "Plain questions like 'how are you' or 'what should I do today' DO NOT need citations. "
+    "If something genuinely isn't in the entries, just say so in one short line and answer from general knowledge."
 )
 
 GENERAL_MODE_RULES = (
@@ -837,10 +925,11 @@ def build_system_prompt(mode: str, personality: str) -> str:
     return (
         p
         + "\n\n" + rules
-        + "\n\nLength: keep replies tight. 2–5 sentences unless the user explicitly asks for depth. "
-          "Voice: natural, like a real person speaking. Contractions are fine. "
-          "Never use phrases like 'I couldn't find', 'Based on your entries', 'It seems', 'It appears' — "
-          "just say the thing."
+        + "\n\nLength: 1–4 sentences for most replies. Five+ sentences ONLY when the user asks for depth or detail. "
+          "Voice: like a real person speaking, not a thoughtful essay. Contractions, fragments, an occasional 'yeah' or 'honestly' are fine. "
+          "Never use these phrases: 'I couldn't find', 'Based on your entries', 'It seems', 'It appears', "
+          "'It sounds like', 'I'm hearing', 'I notice', 'I want to acknowledge'. They make you sound like a chatbot. "
+          "Don't summarise the user's data back at them unless they asked you to."
     )
 
 
@@ -931,8 +1020,18 @@ def crisis_check(text: str) -> Optional[dict]:
     return None
 
 def extract_citations(reply: str, relevant: List[dict]) -> List[dict]:
-    """Parse [cite:XXXX] short-ids and resolve back to full entries."""
-    short_ids = set(re.findall(r"\[cite:([a-z0-9\-]{4,})\]", reply))
+    """Parse [cite:XXXX] short-ids and resolve back to full entries.
+
+    Accepts every variant the model emits in practice:
+      [cite:abc12345]
+      [cite:id=abc12345]
+      [cite:id=abc12345, def67890]   ← model occasionally chains them
+    """
+    # Find any cite token, then pull every 4–36 char alnum/hyphen id from inside it.
+    short_ids: set = set()
+    for blob in re.findall(r"\[cite:[^\]]+\]", reply, flags=re.IGNORECASE):
+        for m in re.findall(r"[a-f0-9\-]{4,36}", blob, flags=re.IGNORECASE):
+            short_ids.add(m.lower())
     cites = []
     for e in relevant:
         sid = e["id"][:8]
@@ -983,8 +1082,16 @@ _BANNED_PHRASES_RX = re.compile(
     r"(?:^|\s)("
     r"based on (your|the) recent journal entries[,:]?\s*"
     r"|based on your journal[,:]?\s*"
+    r"|based on (?:what|the) (?:you['’]?ve written|i can see|context)[,:]?\s*"
+    r"|from your (?:recent )?journal entries[,:]?\s*"
+    r"|looking at your (?:recent )?entries[,:]?\s*"
     r"|i (?:couldn['’]?t|could not) find (?:any )?(?:specific )?mentions? of\s*"
     r"|however,?\s*i (?:couldn['’]?t|could not) find\s*"
+    r"|it sounds like (?:you('|’)?re )?"
+    r"|i['’]?m hearing (?:that )?"
+    r"|i notice (?:that )?"
+    r"|i want to acknowledge\s*"
+    r"|that['’]?s a (?:great|good|interesting) question[!.]?\s*"
     r"|it seems (?:like )?(?:that )?"
     r"|it appears (?:that )?"
     r"|i hope (?:this|that) helps[!.]?\s*"
@@ -1029,20 +1136,26 @@ def detect_brevity(msg: str) -> Optional[str]:
 
 
 def clean_reply(reply: str) -> str:
-    """Strip [cite:xxx] tokens and any punctuation left dangling around them.
+    """Strip [cite:...] tokens and any punctuation left dangling around them.
 
-    The model often writes things like:
-      - "that thing about Sunday ([cite:abc])"  →  "that thing about Sunday"
-      - "X [cite:abc] and Y"                    →  "X and Y"
-      - "(X [cite:abc], Y [cite:def])"          →  "(X, Y)"
+    Handles every variant we see in the wild:
+      [cite:abc]        [cite:id=abc]    [cite:id=abc, def]
+      ([cite:abc])      , [cite:abc]     ([cite:abc, cite:def])
+
+    The cite tokens themselves are matched non-greedily on the WHOLE
+    bracket (anything-but-]) so '=', 'id=', commas inside, multiple ids,
+    etc. all get cleaned. Previously the regex only matched the narrow
+    `[cite:abc]` shape and left `[cite:id=abc]` in the rendered text —
+    the "reference codes" you saw in the chat were leftover tokens.
     """
     out = reply or ""
+    cite_token = r"\[cite:[^\]]+\]"  # everything from [cite: to the closing ]
     # 1. Strip cite tokens that sit alone inside their own parens/brackets.
-    out = re.sub(r"\s*[\(\[]\s*\[cite:[a-z0-9\-]+\]\s*[\)\]]", "", out)
-    # 2. Strip cite tokens that follow a comma inside a list ("X, [cite:abc]")
-    out = re.sub(r",\s*\[cite:[a-z0-9\-]+\]", "", out)
+    out = re.sub(rf"\s*[\(\[]\s*{cite_token}\s*[\)\]]", "", out, flags=re.IGNORECASE)
+    # 2. Strip cite tokens that follow a comma inside a list.
+    out = re.sub(rf",\s*{cite_token}", "", out, flags=re.IGNORECASE)
     # 3. Strip remaining bare cite tokens.
-    out = re.sub(r"\s*\[cite:[a-z0-9\-]+\]", "", out)
+    out = re.sub(rf"\s*{cite_token}", "", out, flags=re.IGNORECASE)
     # 4. Clean up the empty containers / leftover punctuation we may have made.
     out = re.sub(r"[\(\[]\s*[\)\]]", "", out)        # empty parens/brackets
     out = re.sub(r"\s+,", ",", out)                   # " ," → ","
@@ -1387,16 +1500,23 @@ def build_agent_prompt(message: str, observations: List[dict]) -> str:
     obs_block = "\n".join(lines).strip() or "(no tool results — answer from what you already know about the user from context)"
 
     return (
-        "=== What I just looked up in their journal ===\n"
+        "=== Background (what I happen to know about this person from their journal) ===\n"
         f"{obs_block}\n\n"
         "=== Their question ===\n"
         f"{message}\n\n"
-        "Now reply. Rules:\n"
-        "1. ANSWER the question. Plain questions are never ambiguous — never ask them to clarify what they meant.\n"
-        "2. Speak like a person talking to a friend, not a chatbot. No 'Based on your entries...', no 'It seems', no 'I couldn't find any specific mentions'.\n"
-        "3. When you reference what they wrote, cite inline with [cite:id] using the short id from the brackets above. Weave it into prose, don't list entries in parentheses.\n"
-        "4. If the lookups are thin, lead with your best read in 1-2 sentences, then mention what's missing. Never refuse.\n"
-        "5. Keep it tight — 2-5 sentences unless they asked for depth.\n\n"
+        "Now reply. RULES:\n"
+        "1. ANSWER THEIR QUESTION. That's the only job. Anything that doesn't help answer it goes unused.\n"
+        "2. The background above is NOT a list of things to mention. Most of it is irrelevant to most questions. "
+        "Only cite an entry when that specific entry actually answers part of their question. "
+        "If the question doesn't need a citation (e.g. 'how are you', 'what should I do today', 'tell me a joke'), DON'T cite anything.\n"
+        "3. Talk like a real person to a friend. Use contractions. Fragments are fine. "
+        "Banned phrases: 'Based on your entries', 'It seems', 'It sounds like', 'I notice', 'I want to acknowledge', "
+        "'I'm hearing'. None of those go in the reply.\n"
+        "4. Length: 1–4 sentences for almost everything. 5+ sentences ONLY if they asked for depth.\n"
+        "5. If you do cite, use [cite:id] format with the short id shown above. One or two citations max, "
+        "not a parade.\n"
+        "6. Don't summarise their data back at them. Don't 'connect dots' that don't need connecting. "
+        "If their question is simple, your reply is simple.\n\n"
         "Innerbloom:"
     )
 

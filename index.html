@@ -2861,7 +2861,7 @@ async function sendChatStream(text) {
         host.className = "md";
         typing.prepend(host);
       }
-      host.textContent = full.replace(/\[cite:[a-z0-9\-]*\]?/g, "");
+      host.textContent = full.replace(/\[cite:[^\]]+\]/gi, "");
       pinToBottom(false);
     }
 
@@ -2883,16 +2883,30 @@ async function sendChatStream(text) {
 }
 
 // Final pass on a streamed AI bubble: strip cite tokens, attach pills.
+// Matches the broad cite shapes the model emits in practice:
+//   [cite:abc]   [cite:id=abc]   [cite:id=abc, def]
 function finalizeAiMessage(host, fullText, candidates) {
   const cites = [];
-  const ids = [...fullText.matchAll(/\[cite:([a-z0-9\-]+)\]/g)].map(m => m[1]);
-  for (const sid of ids) {
-    const c = (candidates || []).find(c => c.id === sid || c.full_id === sid);
-    if (c && !cites.find(x => x.id === (c.full_id || c.id))) {
-      cites.push({ id: c.full_id || c.id, title: c.title, date: c.date, emotion: c.emotion });
+  // Pull every id-like alnum/hyphen run out of any [cite:...] bracket.
+  const blobRx = /\[cite:[^\]]+\]/gi;
+  const idRx   = /[a-f0-9\-]{4,36}/gi;
+  for (const blob of fullText.match(blobRx) || []) {
+    for (const sid of blob.match(idRx) || []) {
+      const norm = sid.toLowerCase();
+      const c = (candidates || []).find(c =>
+        c.id === norm || c.full_id === norm ||
+        String(c.id || "").toLowerCase() === norm ||
+        String(c.full_id || "").toLowerCase() === norm
+      );
+      if (c && !cites.find(x => x.id === (c.full_id || c.id))) {
+        cites.push({ id: c.full_id || c.id, title: c.title, date: c.date, emotion: c.emotion });
+      }
     }
   }
-  const cleaned = fullText.replace(/\s*\[cite:[a-z0-9\-]+\]/g, "").trim() || "(no reply)";
+  // Strip every [cite:...] block + clean up any empty parens left behind.
+  let cleaned = fullText.replace(/\s*[\(\[]?\s*\[cite:[^\]]+\]\s*[\)\]]?/gi, " ");
+  cleaned = cleaned.replace(/\(\s*\)/g, "").replace(/\s{2,}/g, " ").replace(/\s+([.,;:!?])/g, "$1").trim();
+  if (!cleaned) cleaned = "(no reply)";
   host.innerHTML = "";
   setMsgMarkdown(host, cleaned);
   if (cites.length) host.appendChild(buildCiteRow(cites));
@@ -2967,7 +2981,7 @@ async function sendChatAgent(text) {
               host.className = "md";
               typing.prepend(host);
             }
-            host.textContent = full.replace(/\[cite:[a-z0-9\-]*\]?/g, "");
+            host.textContent = full.replace(/\[cite:[^\]]+\]/gi, "");
             pinToBottom(false);
             break;
           }
