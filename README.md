@@ -135,14 +135,6 @@ python -m http.server 8000
 # open http://localhost:8000/index.html
 ```
 
-### (Optional) Seed sample data
-
-To explore with a populated journal, generate a 65-day fake one:
-
-```bash
-python seed_journal.py
-```
-
 ---
 
 ## Usage
