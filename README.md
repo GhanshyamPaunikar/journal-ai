@@ -21,15 +21,11 @@ You open the app on a Tuesday night. There's a blank page. You start typing.
 
 As you write, Innerbloom is listening. By the time you hit save—almost before you think about it—the system has found the emotion underneath your words. Anxious. Hopeful. Frustrated. Tired. It's tagged the real themes woven through what you wrote. No friction. You never asked it to do this. It just did.
 
-![Write](docs/Entries.png)
-
 A few days pass. A week of entries, maybe a dozen. One night you ask the app something real: *What actually triggers my anxiety?* You pick a personality—the calm therapist, or the honest coach who doesn't sugarcoat. You watch the AI work in real-time. It searches everything you've written, finds the threads that connect, and answers you. Not in generic terms. In *your* terms, with the exact moments it pulled the answer from. Click a citation and you're back in that entry, reading the proof.
 
-![Chat](docs/Chat.png)
+![Chat](docs/Chat.webp)
 
 You notice something else: when you write about certain people, the same feelings come up. Your mom always appears in entries about boundaries. Your best friend shows up on the good nights. There's someone who shows up in your writing when you're frustrated, and someone else when you're calm. You click over to People—and there it is. Each person gets their own card. You see how you actually write about them. Not who you think about, but who appears in your real thoughts. The dominant emotion around them. How it's shifted over time. The last few moments they appeared. You suddenly see something sharp and true: *who's actually present in your life?* Not who you wish was there. Not who you're performing for. Who shows up when you're being honest on the page.
-
-![People](docs/People.png)
 
 After a month of writing, you scroll through Insights. Four cards are waiting.
 
@@ -41,25 +37,21 @@ The third is about your wellbeing. Is there a burnout trend forming? Are you spi
 
 The fourth is about your narrative. Who are you becoming? What values keep reappearing in your writing? What tensions are you holding? It reads like a friend who's been listening closely for a month has written a paragraph about your year.
 
-![Insights](docs/Insights.png)
+![Insights](docs/insights.webp)
+
+![Emotional Triggers](docs/Emotional\ trigger.webp)
 
 You click to the graph. Your entries are mapped as a living landscape—entries as nodes, pulled together when they share meaning. The system named the clusters automatically. Not by tags you gave it, but by what actually distinguishes each grouping. *Returning Adjustments. One-Sided Friendships. Job Offer Preparation. Sober Nights.* You can click a cluster and watch how your emotions shifted through that whole thread. Drag it around. Hover to see entry details. It's your mind, rendered as a map.
 
-![Memory Graph](docs/Memorygraph.png)
+![Memory Graph](docs/Memory\ graph.webp)
 
-Then one day you notice something you almost missed. It's been 30 days since that first entry. The system surfaces a *Month Ago Today* card—a then-vs-now mirror.
+You also notice: Spotify is connected. You can see your recent plays, your most-played artists, your listening patterns by time of day and day of week. You can see which artists kept you company on your hard days. The system correlates your music with your mood.
 
-What's stayed the same? Your baseline values. The thing you keep bumping into.
+![Music and Mood](docs/Music\ and\ mood.webp)
 
-What's shifted? Real changes. The system cites specific entries so you can read the before and after yourself.
+Then one day you notice something you almost missed. It's been 30 days since that first entry. The system surfaces a *Month Ago Today* card—a then-vs-now mirror. What's stayed the same? Your baseline values. What's shifted? Real changes, cited so you can read the proof yourself. What are you still avoiding? The pattern you haven't touched. What are you becoming? Not destination—direction. The shape your life is actually taking.
 
-What are you still avoiding? The pattern you haven't touched yet.
-
-What are you becoming? Not destination—direction. The shape your life is actually taking.
-
-Every claim cites an entry. You can click and read the proof. It's not someone telling you who you are. It's you, reading evidence of who you're becoming.
-
-You also notice: Spotify is connected. You can see your recent plays, your most-played artists, your listening patterns by time of day and day of week. You can see which artists kept you company on your hard days. The system can tell you something about the correlations between your music and your mood—which artists you lean on when you're anxious, which ones show up on your good nights.
+![AI Reflection](docs/Ai\ reflection.webp)
 
 Throughout all of this, there's a quiet gentleness. You get a journaling question in the morning if you want one. An evening nudge if you skip a day. A streak alert if you're in the zone and about to break your run. These notifications fire in-browser, and if you install Innerbloom as an app on your phone, they'll reach you anywhere.
 
