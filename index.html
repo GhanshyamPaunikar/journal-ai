@@ -1279,44 +1279,6 @@ body {
 .music-hero .sub { color: var(--text-muted); font-size: 13px; margin-top: 3px; }
 
 .mood-chart { background: var(--bg-elev); border: 1.5px solid var(--border); border-radius: var(--radius-lg); padding: 22px 24px; box-shadow: var(--shadow-sm); }
-.mood-quadrant {
-  background: var(--bg-elev); border: 1.5px solid var(--border);
-  border-radius: var(--radius-lg); padding: 22px 24px; box-shadow: var(--shadow-sm);
-}
-.mood-quadrant-grid {
-  display: grid; grid-template-columns: 1fr 280px; gap: 22px;
-  align-items: start;
-}
-@media (max-width: 860px) {
-  .mood-quadrant-grid { grid-template-columns: 1fr; }
-}
-.quadrant-canvas-wrap {
-  position: relative; width: 100%;
-  aspect-ratio: 1 / 1;
-  max-width: 460px;
-}
-.quadrant-summary { display: flex; flex-direction: column; gap: 12px; }
-.quadrant-centroid {
-  background: linear-gradient(135deg, rgba(79, 124, 90,0.07), rgba(217, 122, 91,0.05));
-  border: 1px solid rgba(79, 124, 90,0.18);
-  border-radius: 12px; padding: 14px 16px;
-}
-.quadrant-centroid-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; }
-.quadrant-centroid-value { font-family: 'Fraunces', serif; font-size: 20px; color: var(--text); margin-top: 4px; line-height: 1.3; }
-.quadrant-centroid-sub  { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
-.quadrant-mix {
-  display: flex; flex-direction: column; gap: 8px;
-}
-.quadrant-mix-row {
-  display: grid; grid-template-columns: 14px 1fr 36px;
-  gap: 10px; align-items: center;
-  font-size: 12.5px;
-}
-.quadrant-mix-row .swatch { width: 10px; height: 10px; border-radius: 3px; }
-.quadrant-mix-row .bar-wrap { background: var(--bg-2); height: 6px; border-radius: 3px; overflow: hidden; }
-.quadrant-mix-row .bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s ease; }
-.quadrant-mix-row .pct { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
-.quadrant-mix-row .label { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .music-stat-chip {
   background: var(--bg-elev); border: 1.5px solid var(--border); border-radius: 12px;
   padding: 14px 16px; text-align: left;
@@ -1365,53 +1327,6 @@ body {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .artist-plays { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
-
-/* === Daily mood bars === */
-.daily-bar:hover .daily-bar-bar { opacity: 0.82; }
-
-/* === Top artists (full grid, with journal-mood crossover) === */
-.top-artists-grid {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 12px;
-}
-.top-artist-card {
-  display: flex; gap: 14px; align-items: stretch;
-  padding: 14px; background: var(--bg-elev); border: 1.5px solid var(--border);
-  border-radius: 14px; box-shadow: var(--shadow-xs);
-  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
-}
-.top-artist-card:hover {
-  box-shadow: var(--shadow); border-color: var(--border-strong);
-  transform: translateY(-1px);
-}
-.ta-cover {
-  width: 72px; height: 72px; border-radius: 10px; overflow: hidden;
-  flex-shrink: 0; background: var(--bg-2);
-  box-shadow: 0 2px 8px rgba(48, 38, 24, 0.10);
-}
-.ta-cover img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.ta-cover .art-fallback { width: 100%; height: 100%; background: linear-gradient(135deg, var(--bg-2), var(--bg-1)); }
-.ta-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
-.ta-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.ta-name {
-  font-family: 'Fraunces', serif; font-size: 17px; font-weight: 500;
-  color: var(--text); letter-spacing: -0.01em; line-height: 1.2;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.ta-plays {
-  font-size: 11px; color: var(--accent); font-weight: 600;
-  background: var(--accent-soft); padding: 2px 8px; border-radius: 10px;
-  white-space: nowrap; flex-shrink: 0;
-}
-.ta-meta { font-size: 11.5px; color: var(--text-muted); }
-.ta-mood-row {
-  display: inline-flex; align-items: center; gap: 6px;
-  font-size: 11.5px; color: var(--text);
-  margin-top: 4px;
-}
-.ta-mood-row .dot { width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255,253,248,0.6); }
-.ta-mood-row b { color: var(--text); font-weight: 600; text-transform: capitalize; }
-.ta-mood-row.muted { color: var(--text-dim); font-style: italic; }
 
 .track-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .track {
@@ -4568,21 +4483,10 @@ async function loadMusic() {
 
       <div id="listening-snapshot"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
 
-      <div class="section-title"><h3>Most played artists</h3><span class="sub">your last 50 plays · with the journal mood you wrote on the days you played them</span></div>
-      <div id="top-artists-card"><div style="color:var(--text-muted);font-size:13px;">Loading…</div></div>
-
       <div class="section-title"><h3>AI reflection</h3>
         <div class="section-title-actions"><button class="btn btn-primary" id="btn-music-insight">Interpret this</button></div>
       </div>
       <div class="analysis-box" id="music-insight">Click "Interpret this" to have Llama read your listening against your journal.</div>
-
-      <div class="section-title"><h3>Music &amp; mood, day by day</h3><span class="sub">last 30 days · honest about gaps</span></div>
-      <div class="mood-quadrant" id="daily-mood"><div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div></div>
-
-      <div class="section-title"><h3>Mood of what you're playing</h3><span class="sub">when Spotify gives us genre data</span></div>
-      <div class="mood-quadrant" id="mood-quadrant">
-        <div style="color:var(--text-muted);font-size:13px;padding:24px;">Loading…</div>
-      </div>
 
       <div class="section-title"><h3>Top tracks</h3>
         <div class="section-title-actions">
@@ -4604,238 +4508,11 @@ async function loadMusic() {
     $("top-range").addEventListener("change", loadTopTracks);
 
     loadListeningSnapshot();
-    loadTopArtists();
-    loadDailyMood();
-    loadMoodQuadrant();
     loadRecentTracks();
     loadTopTracks();
   } catch (e) {
     host.innerHTML = `<div class="empty"><h3>Couldn't load</h3><p>${escapeHtml(e.message)}</p></div>`;
   }
-}
-
-// Genre-derived mood scatter — works on every Spotify app (no /audio-features).
-// Each track is placed on a 2-D plane (valence × energy) using a curated
-// genre→mood map. We also draw a centroid + quadrant histogram so the user
-// gets a one-glance read of "what mood is your music in lately".
-
-const QUADRANT_COLORS = {
-  "Happy & energetic":     "#22c55e",
-  "Calm & content":        "#06b6d4",
-  "Tense & intense":       "#ef4444",
-  "Mellow & melancholic":  "#8b5cf6",
-};
-
-async function loadMoodQuadrant() {
-  const host = $("mood-quadrant");
-  try {
-    const data = await api("/spotify/genre-mood");
-    renderMoodQuadrant(data);
-  } catch (err) {
-    host.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px;">Couldn't load genre-mood data. ${escapeHtml(err?.message || "")}</div>`;
-  }
-}
-
-function renderMoodQuadrant(data) {
-  const host = $("mood-quadrant");
-  const tracks = (data.tracks || []).filter(t => t.valence != null && t.energy != null);
-
-  if (!tracks.length) {
-    // Spotify deprecated genre tags for new apps in late 2024 — many
-    // artists come back with empty genres. Be honest about it instead of
-    // pretending the user just hasn't played enough music.
-    const found = data.discovered_genres || [];
-    const why = found.length === 0
-      ? `Spotify isn't returning genre tags for the artists you're playing (this is a Nov 2024 platform change that affects newer apps). The mood quadrant needs genres to place songs.`
-      : `Only ${found.length} of your artists' genres are in our mood table — not enough for a confident read yet.`;
-    host.innerHTML = `
-      <div style="background:rgba(196, 126, 42, 0.07);border:1px solid rgba(196, 126, 42, 0.22);border-radius:10px;padding:14px 16px;font-size:13px;line-height:1.6;color:var(--text);">
-        <div style="font-weight:600;margin-bottom:6px;">Can't place your music on the mood plane right now.</div>
-        <div style="color:var(--text-muted);">${escapeHtml(why)}</div>
-        ${found.length ? `
-          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);">
-            <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:0.14em;color:var(--text-dim);font-weight:700;margin-bottom:8px;">What we did find</div>
-            <div style="display:flex;gap:6px;flex-wrap:wrap;">
-              ${found.slice(0, 10).map(g => `<span class="anniv-tag">${escapeHtml(g.name)} <span style="color:var(--text-dim);">·${g.count}</span></span>`).join("")}
-            </div>
-          </div>` : ""}
-      </div>`;
-    return;
-  }
-
-  const enriched = data.enriched_share || 0;
-  const lowCoverage = enriched < 0.4;
-
-  const quadrants = data.quadrants || [];
-  const centroid = data.centroid;
-
-  host.innerHTML = `
-    ${lowCoverage ? `
-      <div style="background:rgba(217,119,6,0.07);border:1px solid rgba(217,119,6,0.22);border-radius:8px;padding:10px 12px;margin-bottom:16px;font-size:12.5px;color:var(--text);line-height:1.55;">
-        Only ${Math.round(enriched*100)}% of your recent tracks had genres we recognise — the picture sharpens as you play more.
-      </div>` : ""}
-    <div class="mood-quadrant-grid">
-      <div>
-        <div class="quadrant-canvas-wrap" id="mood-scatter-wrap">
-          <canvas id="mood-scatter-canvas" style="width:100%;height:100%;display:block;border-radius:10px;"></canvas>
-        </div>
-        <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:10px;font-size:11.5px;color:var(--text-muted);">
-          <span><b>Valence →</b> 0 = sad, 1 = happy</span>
-          <span><b>Energy ↑</b> 0 = mellow, 1 = intense</span>
-          <span>${tracks.length} tracks plotted</span>
-        </div>
-      </div>
-      <div class="quadrant-summary">
-        ${centroid ? `
-          <div class="quadrant-centroid">
-            <div class="quadrant-centroid-label">Your music mood</div>
-            <div class="quadrant-centroid-value">${escapeHtml(centroid.label)}</div>
-            <div class="quadrant-centroid-sub">valence ${centroid.valence} · energy ${centroid.energy}</div>
-          </div>` : ""}
-        <div class="quadrant-mix">
-          ${quadrants.map(q => {
-            const color = QUADRANT_COLORS[q.label] || "#94a3b8";
-            const pct = Math.round((q.share || 0) * 100);
-            return `
-              <div class="quadrant-mix-row" title="${q.count} of ${tracks.length} tracks">
-                <span class="swatch" style="background:${color};"></span>
-                <div>
-                  <div class="label">${escapeHtml(q.label)}</div>
-                  <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${color};"></div></div>
-                </div>
-                <span class="pct">${pct}%</span>
-              </div>`;
-          }).join("")}
-        </div>
-      </div>
-    </div>
-  `;
-
-  requestAnimationFrame(() => drawMoodScatter(tracks));
-}
-
-function drawMoodScatter(tracks) {
-  const canvas = $("mood-scatter-canvas");
-  const wrap = $("mood-scatter-wrap");
-  if (!canvas || !wrap) return;
-  const dpr = window.devicePixelRatio || 1;
-  const w = wrap.clientWidth, h = wrap.clientWidth;  // square
-  canvas.width = w * dpr; canvas.height = h * dpr;
-  canvas.style.height = h + "px";
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  const PAD = { top: 20, right: 18, bottom: 30, left: 36 };
-  const cW = w - PAD.left - PAD.right, cH = h - PAD.top - PAD.bottom;
-
-  // Quadrant fills (Russell circumplex tinting)
-  const fills = [
-    { x0: 0.5, y0: 0,   x1: 1,   y1: 0.5, c: "rgba(34,197,94,0.07)" },  // top-right: happy+energetic
-    { x0: 0,   y0: 0,   x1: 0.5, y1: 0.5, c: "rgba(239,68,68,0.06)" },  // top-left: tense+intense
-    { x0: 0.5, y0: 0.5, x1: 1,   y1: 1,   c: "rgba(6,182,212,0.06)" },  // bottom-right: calm+content
-    { x0: 0,   y0: 0.5, x1: 0.5, y1: 1,   c: "rgba(139,92,246,0.07)" }, // bottom-left: mellow+melancholic
-  ];
-  for (const q of fills) {
-    ctx.fillStyle = q.c;
-    ctx.fillRect(PAD.left + q.x0 * cW, PAD.top + q.y0 * cH, (q.x1 - q.x0) * cW, (q.y1 - q.y0) * cH);
-  }
-
-  // Grid lines (quartiles)
-  ctx.strokeStyle = "rgba(15,23,42,0.06)"; ctx.lineWidth = 1;
-  for (let v = 0; v <= 1.0001; v += 0.25) {
-    const x = PAD.left + v * cW;
-    const y = PAD.top + v * cH;
-    ctx.beginPath(); ctx.moveTo(x, PAD.top); ctx.lineTo(x, PAD.top + cH); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(PAD.left, y); ctx.lineTo(PAD.left + cW, y); ctx.stroke();
-  }
-
-  // Midline crosshair (the actual quadrant boundary)
-  ctx.strokeStyle = "rgba(15,23,42,0.18)"; ctx.lineWidth = 1.4; ctx.setLineDash([4, 4]);
-  ctx.beginPath();
-  ctx.moveTo(PAD.left + cW / 2, PAD.top); ctx.lineTo(PAD.left + cW / 2, PAD.top + cH); ctx.stroke();
-  ctx.beginPath();
-  ctx.moveTo(PAD.left, PAD.top + cH / 2); ctx.lineTo(PAD.left + cW, PAD.top + cH / 2); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // Quadrant labels (faint, top-corners)
-  ctx.font = "600 10px Inter,sans-serif";
-  ctx.fillStyle = "rgba(15,23,42,0.32)";
-  ctx.textAlign = "left";  ctx.fillText("Tense / intense", PAD.left + 8, PAD.top + 14);
-  ctx.textAlign = "right"; ctx.fillText("Happy / energetic", PAD.left + cW - 8, PAD.top + 14);
-  ctx.textAlign = "left";  ctx.fillText("Mellow / melancholic", PAD.left + 8, PAD.top + cH - 6);
-  ctx.textAlign = "right"; ctx.fillText("Calm / content", PAD.left + cW - 8, PAD.top + cH - 6);
-
-  // Axis ticks
-  ctx.font = "10px Inter,sans-serif";
-  ctx.fillStyle = "rgba(100,116,139,0.85)";
-  for (const v of [0, 0.5, 1]) {
-    ctx.textAlign = "center"; ctx.fillText(v.toFixed(1), PAD.left + v * cW, PAD.top + cH + 14);
-    ctx.textAlign = "right";  ctx.fillText((1 - v).toFixed(1), PAD.left - 5, PAD.top + v * cH + 3);
-  }
-  ctx.fillStyle = "rgba(15,23,42,0.5)";
-  ctx.textAlign = "center"; ctx.fillText("valence (positivity)", PAD.left + cW / 2, h - 6);
-  ctx.save();
-  ctx.translate(12, PAD.top + cH / 2); ctx.rotate(-Math.PI / 2);
-  ctx.textAlign = "center"; ctx.fillText("energy", 0, 0);
-  ctx.restore();
-
-  // Helper: snap track to canvas coords (energy 1 = top)
-  const toXY = (t) => [PAD.left + t.valence * cW, PAD.top + (1 - t.energy) * cH];
-
-  // Cluster tracks by (rounded-down to 0.05) so overlapping plays size up
-  const buckets = new Map();
-  for (const t of tracks) {
-    const kx = Math.round(t.valence * 20), ky = Math.round(t.energy * 20);
-    const key = `${kx}:${ky}`;
-    if (!buckets.has(key)) buckets.set(key, { tracks: [], v: 0, e: 0 });
-    const b = buckets.get(key);
-    b.tracks.push(t); b.v += t.valence; b.e += t.energy;
-  }
-
-  // Dot pass — colour by quadrant
-  for (const b of buckets.values()) {
-    const v = b.v / b.tracks.length, e = b.e / b.tracks.length;
-    const [x, y] = toXY({ valence: v, energy: e });
-    const r = 4 + Math.min(10, Math.sqrt(b.tracks.length) * 2.5);
-    const q = b.tracks[0].quadrant;
-    const color = QUADRANT_COLORS[q] || "#94a3b8";
-    // halo
-    ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2);
-    ctx.fillStyle = color + "33"; ctx.fill();
-    // body
-    ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
-    ctx.fillStyle = color; ctx.globalAlpha = 0.9; ctx.fill();
-    ctx.globalAlpha = 1; ctx.strokeStyle = "white"; ctx.lineWidth = 1.5; ctx.stroke();
-  }
-
-  // Hover tooltip
-  let tip = wrap.querySelector(".scatter-tip");
-  if (!tip) {
-    tip = document.createElement("div");
-    tip.className = "scatter-tip";
-    tip.style.cssText = "position:absolute;pointer-events:none;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 11px;font-size:11.5px;color:#18181b;white-space:nowrap;opacity:0;transition:opacity 0.12s;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.08);max-width:260px;white-space:normal;";
-    wrap.appendChild(tip);
-  }
-  canvas.onmousemove = (ev) => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = (ev.clientX - rect.left), my = (ev.clientY - rect.top);
-    let best = null, bestD = 18;
-    for (const b of buckets.values()) {
-      const v = b.v / b.tracks.length, e = b.e / b.tracks.length;
-      const [x, y] = toXY({ valence: v, energy: e });
-      const d = Math.hypot(mx - x, my - y);
-      if (d < bestD) { bestD = d; best = b; }
-    }
-    if (!best) { tip.style.opacity = "0"; return; }
-    const names = best.tracks.slice(0, 3).map(t => `<div>· ${escapeHtml(t.name)} <span style="color:#94a3b8;">— ${escapeHtml(t.artist)}</span></div>`).join("");
-    const more = best.tracks.length > 3 ? `<div style="color:#94a3b8;margin-top:3px;">+ ${best.tracks.length - 3} more</div>` : "";
-    tip.innerHTML = `<div style="font-weight:600;color:${QUADRANT_COLORS[best.tracks[0].quadrant] || "#475569"};margin-bottom:3px;">${escapeHtml(best.tracks[0].quadrant || "—")}</div>${names}${more}`;
-    tip.style.left = Math.min(rect.width - 180, Math.max(8, mx + 10)) + "px";
-    tip.style.top  = Math.max(8, my - 38) + "px";
-    tip.style.opacity = "1";
-  };
-  canvas.onmouseleave = () => { tip.style.opacity = "0"; };
 }
 
 // --- Recent listening summary (replaces the misleading stat strip) ---
@@ -4855,7 +4532,7 @@ function _fmtRelativeDate(iso) {
   } catch { return iso.slice(0, 10); }
 }
 
-// Cache so the two consumers (snapshot + artists list) only fetch once.
+// Cache the genre-mood fetch so the listening snapshot only fetches once.
 let _genreMoodCache = null;
 async function _genreMoodOnce() {
   if (_genreMoodCache) return _genreMoodCache;
@@ -4891,131 +4568,6 @@ async function loadListeningSnapshot() {
   } catch {
     host.innerHTML = `<div class="empty"><h3>Couldn't load</h3></div>`;
   }
-}
-
-async function loadTopArtists() {
-  const host = $("top-artists-card");
-  try {
-    const d = await _genreMoodOnce();
-    const top = d.top_artists || [];
-    if (!top.length) {
-      host.innerHTML = `<div class="empty"><h3>No artists yet</h3><p>Play some music on Spotify and come back.</p></div>`;
-      return;
-    }
-    const _fmtDayShort = iso => {
-      if (!iso) return "";
-      try { return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" }); } catch { return iso; }
-    };
-
-    // Sort: highest-play first (already from backend), then with a stable
-    // tiebreak by name. Take up to 10.
-    const cards = top.slice(0, 10).map(a => {
-      const onDay = a.journal_emotion_on_days;
-      const onInt = a.journal_intensity_on_days;
-      const overlapBadge = a.overlap_days > 0 && onDay
-        ? `<div class="ta-mood-row" title="Top journal emotion on the day(s) you played ${escapeHtml(a.name)}">
-             <span class="dot" style="background:var(--e-${onDay});"></span>
-             You wrote <b>${escapeHtml(onDay)}</b>${onInt != null ? ` · ${onInt}/10` : ""} on the day${a.overlap_days === 1 ? "" : "s"} you played them
-           </div>`
-        : `<div class="ta-mood-row muted">No journal entry on the days you played them yet</div>`;
-      const datesLine = a.days_listened > 1
-        ? `<div class="ta-meta">${a.days_listened} listening days · ${_fmtDayShort(a.first_played)} → ${_fmtDayShort(a.last_played)}</div>`
-        : `<div class="ta-meta">on ${_fmtDayShort(a.last_played)}</div>`;
-      return `
-        <div class="top-artist-card">
-          <div class="ta-cover">${a.image ? `<img src="${a.image}" alt="">` : `<div class="art-fallback"></div>`}</div>
-          <div class="ta-body">
-            <div class="ta-head">
-              <div class="ta-name">${escapeHtml(a.name)}</div>
-              <div class="ta-plays">${a.plays} ${a.plays === 1 ? "play" : "plays"}</div>
-            </div>
-            ${datesLine}
-            ${overlapBadge}
-          </div>
-        </div>`;
-    }).join("");
-
-    host.innerHTML = `<div class="top-artists-grid">${cards}</div>`;
-  } catch {
-    host.innerHTML = `<div class="empty"><h3>Couldn't load</h3></div>`;
-  }
-}
-
-// --- Daily listening + journal mood (honest replacement for the time-series) ---
-async function loadDailyMood() {
-  const host = $("daily-mood");
-  try {
-    const d = await api("/spotify/daily?days=30");
-    renderDailyMood(d);
-  } catch {
-    host.innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px;">Couldn't load daily listening.</div>`;
-  }
-}
-
-function renderDailyMood(d) {
-  const host = $("daily-mood");
-  const days = d.days || [];
-  const musicMax = Math.max(1, ...days.map(x => x.plays || 0));
-
-  // Honesty banner about what's in the data
-  const note = d.overlap_days === 0
-    ? `<div style="background:rgba(196, 126, 42, 0.07);border:1px solid rgba(196, 126, 42, 0.22);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;line-height:1.55;">
-         <strong>No overlapping days yet.</strong> You listened on ${d.music_days} day${d.music_days === 1 ? "" : "s"} and journaled on ${d.journal_days}, but no day has both. Once they overlap, you'll see how the two move together.
-       </div>`
-    : `<div style="background:var(--accent-soft);border:1px solid rgba(79, 124, 90, 0.18);border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12.5px;line-height:1.55;">
-         <strong>${d.overlap_days} ${d.overlap_days === 1 ? "day" : "days"}</strong> with both music and a journal entry — those are the bars with a coloured dot.
-       </div>`;
-
-  host.innerHTML = `
-    ${note}
-    <div id="daily-mood-wrap" style="position:relative;">
-      <div style="display:flex;align-items:flex-end;gap:3px;height:170px;padding:6px 0 22px;border-bottom:1px solid var(--border);">
-        ${days.map((x, i) => {
-          const h = x.plays > 0 ? Math.max(4, (x.plays / musicMax) * 150) : 2;
-          const dim = x.plays === 0;
-          return `<div class="daily-bar" data-i="${i}" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;cursor:pointer;">
-            <div class="daily-bar-bar" style="width:100%;height:${h}px;border-radius:3px 3px 0 0;background:${dim ? "rgba(48, 38, 24, 0.10)" : "linear-gradient(180deg, var(--accent), var(--accent-deep))"};transition:opacity 0.12s ease;"></div>
-            <div class="daily-bar-dot" style="width:9px;height:9px;border-radius:50%;margin-top:5px;background:${x.emotion ? `var(--e-${x.emotion})` : "transparent"};box-shadow:${x.emotion ? "0 0 0 2px rgba(255,253,248,0.7)" : "none"};"></div>
-          </div>`;
-        }).join("")}
-      </div>
-      <div style="display:flex;justify-content:space-between;font-size:10.5px;color:var(--text-dim);margin-top:6px;">
-        <span>${days.length ? new Date(days[0].date).toLocaleDateString([],{month:"short",day:"numeric"}) : ""}</span>
-        <span>${days.length ? new Date(days[Math.floor(days.length/2)].date).toLocaleDateString([],{month:"short",day:"numeric"}) : ""}</span>
-        <span>today</span>
-      </div>
-      <div class="chart-tooltip" id="daily-mood-tip" style="position:absolute;pointer-events:none;background:#ffffff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 11px;font-size:11.5px;color:#18181b;white-space:nowrap;opacity:0;transition:opacity 0.12s;z-index:5;box-shadow:0 4px 12px rgba(0,0,0,0.08);"></div>
-    </div>
-    <div style="display:flex;gap:18px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border);font-size:11.5px;color:var(--text-muted);flex-wrap:wrap;">
-      <span><span style="display:inline-block;width:10px;height:8px;background:var(--accent);border-radius:2px;vertical-align:middle;margin-right:5px;"></span>Bar height = plays that day</span>
-      <span><span style="display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--e-content);box-shadow:0 0 0 2px rgba(255,253,248,0.7);vertical-align:middle;margin-right:5px;"></span>Dot = your top journal emotion that day</span>
-    </div>`;
-
-  // Hover tooltip
-  const tip = document.getElementById("daily-mood-tip");
-  const wrap = document.getElementById("daily-mood-wrap");
-  host.querySelectorAll(".daily-bar").forEach(el => {
-    el.addEventListener("mouseenter", (ev) => {
-      const idx = parseInt(el.getAttribute("data-i"), 10);
-      const x = days[idx];
-      const dateLabel = new Date(x.date).toLocaleDateString([], { weekday: "short", month: "short", day: "numeric" });
-      const lines = [`<div style="font-weight:600;margin-bottom:3px;">${dateLabel}</div>`];
-      lines.push(`<div>Music: <b>${x.plays}</b> ${x.plays === 1 ? "play" : "plays"}</div>`);
-      if (x.emotion) {
-        lines.push(`<div style="color:#444;">Journal: <b>${escapeHtml(x.emotion)}</b>${x.avg_intensity != null ? ` · ${x.avg_intensity}/10` : ""} · ${x.entry_count} ${x.entry_count === 1 ? "entry" : "entries"}</div>`);
-      } else {
-        lines.push(`<div style="color:#94a3b8;">No journal entry</div>`);
-      }
-      tip.innerHTML = lines.join("");
-      const wrapRect = wrap.getBoundingClientRect();
-      const barRect = el.getBoundingClientRect();
-      const x_px = barRect.left - wrapRect.left + barRect.width / 2;
-      tip.style.left = Math.min(wrapRect.width - 200, Math.max(0, x_px - 90)) + "px";
-      tip.style.top = "0px";
-      tip.style.opacity = "1";
-    });
-    el.addEventListener("mouseleave", () => { tip.style.opacity = "0"; });
-  });
 }
 
 // (legacy — no longer wired, kept so any external callers don't break)

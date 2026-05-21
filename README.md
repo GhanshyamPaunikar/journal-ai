@@ -168,7 +168,7 @@ Go to **Graph**. Drag nodes, hover for details, scroll to zoom, click a node to 
 Go to **People** to see who shows up in your writing and the emotional shape of each relationship.
 
 ### Music & Mood
-Connect Spotify in **Settings**, then open **Music** for recent plays, top artists, listening patterns, genre-mood mapping, and music-vs-mood correlation.
+Connect Spotify in **Settings**, then open **Music** for a listening snapshot (recent plays, active days, top genres), an AI reflection that reads your listening against your journal, your top tracks, and your recently played.
 
 ### Search & export
 Search is keyword + semantic. **Export** dumps your whole journal to Markdown.
@@ -253,8 +253,8 @@ INNERBLOOM_MODEL=llama3.1:8b uvicorn app:app --port 5000
 |---|---|---|
 | `GET` | `/spotify/status` | Connection state |
 | `POST` | `/spotify/config` · `/exchange` · `/disconnect` | PKCE setup / teardown |
-| `GET` | `/spotify/recent` · `/top` · `/listening-pattern` | Plays, top artists, patterns |
-| `GET` | `/spotify/genre-mood` · `/daily` · `/mood` · `/insight` | Music-mood correlation |
+| `GET` | `/spotify/recent` · `/top` | Recent plays, top tracks |
+| `GET` | `/spotify/genre-mood` · `/insight` | Listening snapshot + AI reflection |
 
 ### Health
 | Method | Path | Purpose |
