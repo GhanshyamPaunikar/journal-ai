@@ -106,8 +106,8 @@ Two-stage and non-blocking. A fast regex pass catches explicit signals; ambiguou
 ### 1. Install
 
 ```bash
-git clone https://github.com/GhanshyamPaunikar/journal-ai.git
-cd journal-ai
+git clone https://github.com/GhanshyamPaunikar/innerbloom.git
+cd innerbloom
 pip install -r requirements.txt
 ```
 
