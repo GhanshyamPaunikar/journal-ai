@@ -2,9 +2,9 @@
 
 # Innerbloom — Advanced AI Journal
 
-### An AI journal that understands your patterns, emotions, and contradictions — running entirely on your machine.
+### A journal that reads you back.
 
-Journaling is powerful when someone reads what you write—finds patterns, notices contradictions, and reflects them back to you. **Innerbloom** does that using local LLMs, semantic search, and real-time reasoning. Nothing leaves your machine.
+Write honestly. Innerbloom listens—finds your patterns, sees who's actually in your life, watches you becoming. Uses local AI so nothing leaves your machine.
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/fastapi-0.110+-teal.svg)](https://fastapi.tiangelo.com/)
@@ -15,81 +15,66 @@ Journaling is powerful when someone reads what you write—finds patterns, notic
 
 ---
 
-## What You Get
+## What You'll Discover
 
-### 📝 Write — Distraction-free with instant AI analysis
-Every entry gets analyzed for emotion, intensity (1–10), themes, and tags. The system learns your patterns in real-time.
+You open the app on a Tuesday night. There's a blank page. You start typing.
+
+As you write, Innerbloom is listening. By the time you hit save—almost before you think about it—the system has found the emotion underneath your words. Anxious. Hopeful. Frustrated. Tired. It's tagged the real themes woven through what you wrote. No friction. You never asked it to do this. It just did.
 
 ![Write](docs/Entries.png)
 
-### 💬 Chat with Your Journal — Multi-turn reasoning with live steps
-- Ask complex questions: *"What triggers my anxiety?"*, *"How have I been contradicting myself?"*
-- Choose a **personality** (calm therapist, honest coach, analytical observer) 
-- Watch the AI think in real-time: see it planning → searching memory → drafting your answer
-- Get **citations** to specific entries that back up every claim
+A few days pass. A week of entries, maybe a dozen. One night you ask the app something real: *What actually triggers my anxiety?* You pick a personality—the calm therapist, or the honest coach who doesn't sugarcoat. You watch the AI work in real-time. It searches everything you've written, finds the threads that connect, and answers you. Not in generic terms. In *your* terms, with the exact moments it pulled the answer from. Click a citation and you're back in that entry, reading the proof.
 
 ![Chat](docs/Chat.png)
 
-### 🧠 Four Deep Insight Cards
-- **Contradictions**: Where you say one thing but consistently do another (with evidence)
-- **Emotional Triggers**: Patterns in what makes you anxious, frustrated, or happy
-- **Wellbeing**: Burnout trends + emotional spirals with warning signs
-- **Identity & Narrative**: Your core values, tensions, and how your arc is changing over time
+You notice something else: when you write about certain people, the same feelings come up. Your mom always appears in entries about boundaries. Your best friend shows up on the good nights. There's someone who shows up in your writing when you're frustrated, and someone else when you're calm. You click over to People—and there it is. Each person gets their own card. You see how you actually write about them. Not who you think about, but who appears in your real thoughts. The dominant emotion around them. How it's shifted over time. The last few moments they appeared. You suddenly see something sharp and true: *who's actually present in your life?* Not who you wish was there. Not who you're performing for. Who shows up when you're being honest on the page.
+
+![People](docs/People.png)
+
+After a month of writing, you scroll through Insights. Four cards are waiting.
+
+The first shows contradictions. Times you said one thing but did another—a pattern backed by evidence from your own entries. You read it and it stings a little, but it's true.
+
+The second is emotional triggers. What actually makes you move—what consistently shifts your mood. The system pulled this from statistics (which tags correlate with your ups and downs), but the AI reads it in human language. Here's what moves you.
+
+The third is about your wellbeing. Is there a burnout trend forming? Are you spiraling emotionally? The card doesn't judge—it just shows you the shape of your mood over the last two weeks and sounds an early warning if something's tipping.
+
+The fourth is about your narrative. Who are you becoming? What values keep reappearing in your writing? What tensions are you holding? It reads like a friend who's been listening closely for a month has written a paragraph about your year.
 
 ![Insights](docs/Insights.png)
 
-### 🕸️ Memory Graph with named clusters
-- See your entries as an interactive force-directed graph (mind map)
-- **Clusters auto-named** — connected groups of entries are labelled after their dominant theme/tag (e.g. *"Self-Awareness"*, *"#sleep"*, *"Belonging"*)
-- Each cluster gets its own colour + a soft hull behind it
-- Clickable legend lets you **focus one cluster** (dims everything else)
-- Drag, hover, zoom — click any node to open that entry
+You click to the graph. Your entries are mapped as a living landscape—entries as nodes, pulled together when they share meaning. The system named the clusters automatically. Not by tags you gave it, but by what actually distinguishes each grouping. *Returning Adjustments. One-Sided Friendships. Job Offer Preparation. Sober Nights.* You can click a cluster and watch how your emotions shifted through that whole thread. Drag it around. Hover to see entry details. It's your mind, rendered as a map.
 
 ![Memory Graph](docs/Memorygraph.png)
 
-### 🔐 Crisis Detection
-- Two-stage system: keyword-based initial screening + LLM semantic understanding
-- If detected, shows immediate helpline access in a safety card
-- Zero false positives while catching what matters
+Then one day you notice something you almost missed. It's been 30 days since that first entry. The system surfaces a *Month Ago Today* card—a then-vs-now mirror.
 
-### 📊 Full Statistics & Streaks
-- Heatmap (GitHub-style, 365 days at a glance)
-- Current streak counter
-- Emotion distribution across your entire journal
-- Daily entry volume
+What's stayed the same? Your baseline values. The thing you keep bumping into.
 
-### 🎵 Spotify Integration (optional)
-- Connect your Spotify account (OAuth, zero secrets stored)
-- **Genre-derived mood scatter** — each track placed on a valence × energy plane via a curated genre→mood table (works on every Spotify app, no `/audio-features` needed)
-- Quadrant histogram + a one-sentence read of your current music mood
-- Listening-pattern heatmap (hour × day-of-week)
-- AI interpretation correlating your music with journal intensity
+What's shifted? Real changes. The system cites specific entries so you can read the before and after yourself.
 
-![Spotify](docs/Spotify.png)
+What are you still avoiding? The pattern you haven't touched yet.
 
-### 🌱 Month-ago surfacing
-- Every time you open Write, Innerbloom looks at entries from around 30 days ago
-- A then-vs-now card shows your dominant emotion, top tags, and avg intensity for both windows
-- A short LLM-written reflection: **what's stayed the same · what's actually shifted · what you're still avoiding · the direction you're moving in** — every claim citing the entries it pulled from
-- Click any citation pill to jump to that entry
-- Dismiss for the day; re-fires once you write something new
+What are you becoming? Not destination—direction. The shape your life is actually taking.
 
-### 🔔 Local notifications
-- All scheduled in-browser, **nothing leaves your machine**
-- Configurable in Settings:
-  - **Morning prompt** — your daily LLM-generated journaling question at 8:30 am
-  - **Evening reflection** — 9 pm nudge if you haven't written yet
-  - **Streak risk** — 10:30 pm if your streak is > 3 days and today is empty
-  - **Month-ago surfacing** — once per day if there's a real "then vs now" match
-  - **Wellbeing alert** — when the burnout or spiral signal goes above "ok"
-- Fires while the tab is open; install Innerbloom as a PWA for background delivery
+Every claim cites an entry. You can click and read the proof. It's not someone telling you who you are. It's you, reading evidence of who you're becoming.
+
+You also notice: Spotify is connected. You can see your recent plays, your most-played artists, your listening patterns by time of day and day of week. You can see which artists kept you company on your hard days. The system can tell you something about the correlations between your music and your mood—which artists you lean on when you're anxious, which ones show up on your good nights.
+
+Throughout all of this, there's a quiet gentleness. You get a journaling question in the morning if you want one. An evening nudge if you skip a day. A streak alert if you're in the zone and about to break your run. These notifications fire in-browser, and if you install Innerbloom as an app on your phone, they'll reach you anywhere.
+
+And one more thing: if you ever write something the system detects as crisis—self-harm language, suicidal ideation—it steps in quietly. Not a lecture. Just immediate access to resources. 988. Crisis text lines. Real help, presented simply.
+
+Everything stays on your machine. No cloud. No analytics. No one is reading your entries but you and the AI that's learning to help you read yourself.
+
+This is what it feels like when a journal understands you back.
 
 ---
 
 ## How It Works
 
 ### Semantic Memory (No Hallucinations)
-- Entries are embedded using `nomic-embed-text` for semantic understanding
+- Entries are embedded using `mxbai-embed-large` (1024-dim vectors) for semantic understanding
 - When you ask a question, the system searches both keywords AND semantic meaning
 - All claims cite specific entries with timestamps — no made-up references
 
@@ -123,8 +108,8 @@ All insights are stored in `data/insights.json` for review history.
 ### Prerequisites
 - **Python 3.10+**
 - **Ollama** installed and running: https://ollama.ai
-- A pulled model (default is `qwen2.5:7b` — ~4.7 GB)
-- Optional: `nomic-embed-text` for semantic search (`ollama pull nomic-embed-text`)
+- A chat model (default is `qwen2.5:7b` — ~4.7 GB)
+- An embedding model (default is `mxbai-embed-large`; alternatively `nomic-embed-text`)
 
 ### 1. Clone & Install
 
@@ -141,7 +126,7 @@ pip install -r requirements.txt
 ollama serve
 # In another terminal:
 ollama pull qwen2.5:7b
-ollama pull nomic-embed-text  # for semantic search
+ollama pull mxbai-embed-large  # semantic search (or use nomic-embed-text)
 ```
 
 ### 3. Run the Backend
@@ -206,11 +191,11 @@ That's it. You're ready to journal.
 ## Environment Variables
 
 ```bash
-# Model
+# Chat model
 INNERBLOOM_MODEL=qwen2.5:7b
 
-# Embeddings for semantic search
-INNERBLOOM_EMBED_MODEL=nomic-embed-text
+# Embedding model for semantic search
+INNERBLOOM_EMBED_MODEL=mxbai-embed-large
 
 # Ollama endpoints (defaults to localhost)
 INNERBLOOM_OLLAMA_URL=http://localhost:11434/api/generate

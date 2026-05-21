@@ -7,8 +7,8 @@ Character (consistent across the run):
   a personal AI app (this app, more or less).
 - Returned from ~5 years in London to home in India. Misses UK life.
 - Sober ~9 months and proud of the clarity it bought.
-- Good friend circle (Kabir, Anjali, Sahir) + one bad friend (Vikram)
-  who uses him; learning to set limits there.
+- Good friend circle (Bob, Sophie, Alex) + one casual friend (John)
+  learning healthy dynamics with.
 - Highly empathetic / compassionate → also gets drained by it.
 - Tired of building new friendships from scratch; trust takes time.
 - Playful side: learning inline-skate tricks, loves house & pop music,
@@ -63,8 +63,8 @@ RAW = [
      "First five applications out",
      "Sent five today. ML engineer roles, mostly remote. Polished the CV three times before I could press submit on any of them. The waiting starts now. The waiting is the hardest part."),
     (57, 20, "grateful", 7, ["friends","kabir","circle"], ["belonging"],
-     "Kabir came over",
-     "Kabir drove an hour to come hang. We didn't even do much, watched bad TV, ate dosa. He's been my friend since we were eleven. There's a kind of friendship where you don't have to perform and tonight I felt it again."),
+     "Bob came over",
+     "Bob drove an hour to come hang. We didn't even do much, watched bad TV, ate dosa. He's been my friend since we were eleven. There's a kind of friendship where you don't have to perform and tonight I felt it again."),
     (56, 22, "lonely", 6, ["uk","missing","friends"], ["uk nostalgia","distance"],
      "Group chat scrolled past me",
      "The London group chat has been quiet for me but loud for them. Someone's birthday, someone's promotion. I'm thirteen replies behind and I don't have the energy to catch up. Feeling forgotten and knowing it's partly my own doing doesn't help."),
@@ -81,9 +81,9 @@ RAW = [
     (53, 19, "hopeful", 7, ["health","fitness","diet"], ["self-improvement"],
      "Day one of clean eating",
      "Cooked all three meals. No processed anything. Sober, no junk, building something — I'm becoming a person I didn't think I had the discipline to be. Strange feeling. Suspicious of it, even."),
-    (52, 19, "frustrated", 7, ["friends","vikram","trust","bad-friend"], ["used by friends"],
-     "Vikram needed money",
-     "Vikram texted again, asking to borrow money. Third time this year. He always pays back late, sometimes not at all. I said yes anyway. I'm tired of being the friend who can be asked. I'm also tired of being the friend who finally says no."),
+    (52, 19, "happy", 7, ["friends","cooking","sahir","circle"], ["belonging"],
+     "Alex and the spice jar",
+     "Alex came over and I was making a new curry. He grabbed what he thought was garam masala and put in a tablespoon of chili powder instead. The dal turned apocalyptic. We just stared at it, then laughed till we couldn't breathe. Made toast instead and it became one of those perfect accident nights where the food didn't matter."),
     (51, 21, "calm", 6, ["walk","health","evening"], ["simple pleasures"],
      "Walked at sunset",
      "An hour, no music, no podcast. Watched two dogs play. Sat on a bench for ten minutes doing nothing. Came home and felt the kind of quiet you can't manufacture."),
@@ -100,18 +100,21 @@ RAW = [
     (48, 19, "calm", 6, ["skate","new","learning","play"], ["beginner","play"],
      "Got the skates",
      "Inline skates arrived. First time strapping them on since I was twelve. Ten minutes in the apartment, terrified to go outside. Eventually went out, did one cautious loop of the park. Knees survived. Feel like a kid again, in a good way."),
+    (49, 6, "determined", 8, ["gym","fitness","health","abs"], ["beach body"],
+     "First day at the gym",
+     "Joined the gym near home. Haven't lifted in three years. Did a full body workout — felt it immediately in my legs and shoulders. The trainer said I've got the foundation, just need consistency. Beach body for summer, that's the goal. Actually seeing definition again would be something."),
     (47, 21, "content", 6, ["music","house","evening","sober"], ["enjoyment","sober pleasures"],
      "House mix and a clean kitchen",
      "Put on a deep-house mix and cooked dal. Three hours just disappeared. The whole point of going sober wasn't to suffer. It was to enjoy nights like this without needing to be wrecked."),
     (46, 22, "frustrated", 7, ["communication","jobs","self"], ["working on self"],
      "I ramble when I'm nervous",
-     "Did a mock interview with Sahir on a call. He said gently I should answer shorter, not start every reply with 'so basically.' Heard. Wrote it down. The thing I'm most insecure about is exactly what I have to drill."),
+     "Did a mock interview with Alex on a call. He said gently I should answer shorter, not start every reply with 'so basically.' Heard. Wrote it down. The thing I'm most insecure about is exactly what I have to drill."),
     (45, 23, "tired", 6, ["work","coding","late"], ["pace"],
      "Up too late again",
      "Closing the laptop at 1:30. Telling myself this is the season. Knowing the season has a body cost. Tomorrow I'll start before sunset instead of finishing after midnight."),
-    (44, 22, "angry", 7, ["friends","trust","vikram","bad-friend"], ["trust fatigue","used by friends"],
-     "Vikram cancelled, again",
-     "He bailed on coming to help me move boxes. Texted at 6pm when I was supposed to pick him up at 6:30. 'Stuck at work.' Sahir mentioned later that Vikram was at a concert tonight. I keep extending grace I don't have anymore."),
+    (44, 22, "happy", 7, ["friends","skate","play","anjali"], ["play","being silly"],
+     "Taught Sophie to skate",
+     "Sophie wanted to learn inline skates. I strapped her in at the park and she immediately lost it, grabbing my arm for dear life while her feet went everywhere. By the end she did a three-meter line without help and we both cheered like she'd won an Olympic medal. The joy of watching someone discover they can do a thing they were terrified of — that's the drug I didn't know I needed."),
     (43, 20, "lonely", 7, ["friends","new","trust","tired"], ["trust fatigue"],
      "Someone from the AI meetup wants coffee",
      "Got a message from a person I met at the meetup. Wants to grab coffee. I should be excited and instead I'm exhausted. Building a new friendship from scratch costs more energy than I have right now. Trust takes years and I don't have any to spare. Maybe I'll say yes anyway."),
@@ -122,11 +125,14 @@ RAW = [
     (42, 11, "proud", 7, ["skate","learning","play","progress"], ["beginner progress","play"],
      "Cross-overs",
      "Skated for an hour. Tried cross-overs going left. Fell once, hard, on the elbow pad. Got back up. Eventually got two in a row clean. Eleven-year-old me would be hysterical. 28-year-old me is hysterical."),
+    (42, 7, "sore", 6, ["gym","fitness","health","soreness"], ["grind"],
+     "One week in, everything hurts",
+     "Woke up today and literally every muscle is sore. Couldn't even laugh without wincing. Did another gym session anyway — the soreness will pass but the discipline won't. Started swimming laps too, 20 laps and nearly drowned by lap 15. Worth it."),
     (41, 22, "overwhelmed", 8, ["work","coding","jobs","ai"], ["overcommitting","pace"],
      "Too many tabs",
      "Three job applications, the contradictions engine debug, dinner I never made. Closed the laptop at midnight feeling like nothing got finished. Have to start writing things down again. The grind without a system becomes flailing."),
     (40, 20, "lonely", 7, ["friends","missing","fun","fomo"], ["isolation chosen"],
-     "Skipping Sahir's brother's wedding",
+     "Skipping Alex's brother's wedding",
      "Said no. Three days I can't afford right now. I know what I'm choosing. I know it costs. The cost is real and it's still the right call. Writing it down so I remember I chose it on purpose, not by drift."),
     (39, 22, "tired", 6, ["work","late","grinding"], ["pace"],
      "Seasons, not balance",
@@ -147,6 +153,9 @@ RAW = [
     (35, 22, "frustrated", 6, ["communication","self","practice"], ["working on self"],
      "Mirror practice",
      "Practiced answering 'tell me about yourself' to the bathroom mirror tonight. Felt stupid. Did it eight more times. The eighth one was less rambly. Eight is what improvement looks like, not one perfect take."),
+    (35, 7, "proud", 8, ["gym","fitness","abs","progress","health"], ["beach body progress"],
+     "Two weeks in, shape's coming back",
+     "Soreness faded by day 10. Now I'm noticing things — chest is tighter, shoulders are broader. Abs not quite visible yet but there's definition under the surface. Gym's become the morning ritual I look forward to. Swimming 3x a week, gym 4x a week. The compound effect is real."),
     (34, 22, "content", 6, ["music","pop","evening","sober"], ["enjoyment"],
      "Charli set on repeat",
      "Played that Charli XCX album three times through tonight while debugging. The right kind of loud. Eight months ago this would have been a club night. Tonight it's clean code and a bowl of noodles. Wouldn't trade."),
@@ -161,17 +170,20 @@ RAW = [
      "Realized tonight the journal app isn't really about the app. It's the practice of building something every day. The discipline. The deliverable. Whether it ships or not, the version of me who can do this for 60 days is who I'm trying to become."),
 
     # =============================================================
-    # 3 weeks ago — heavy isolation, Vikram blow-up coming
+    # 3 weeks ago — heavy isolation, John blow-up coming
     # =============================================================
-    (29, 21, "angry", 7, ["friends","vikram","bad-friend","used","boundaries"], ["used by friends"],
-     "Vikram again, at 11pm",
-     "Vikram showed up at 11pm wanting to crash, no notice. I let him in because what was I going to do at 11pm. He stayed up watching reels, ate everything in the fridge, left at 2am without doing the dishes. I'm not angry at him. I'm angry at me for not having a script yet."),
+    (29, 21, "happy", 7, ["friends","music","hosting","circle","house"], ["belonging"],
+     "Impromptu dinner night",
+     "Bob texted 'free tonight?' and suddenly Alex and Sophie were over too. Nothing planned, just cleared the table and cooked biryani while we played terrible music and debated which was worse. Bob nearly fell off his chair laughing at Alex's take on a new band. These nights where four people just decide to exist in the same room — this is what life is actually for."),
     (28, 9, "tired", 7, ["sleep","grinding","work","coding"], ["pace"],
      "Slept five hours",
      "Coding till 3am chasing an embeddings bug. Found it at 2:47am — off-by-one in the cosine sim. Felt the rush, then immediately the cost. This is the part of grinding that's actually expensive and I keep paying it."),
+    (28, 7, "excited", 8, ["gym","fitness","abs","health"], ["progress"],
+     "Three weeks, abs breaking through",
+     "Top four abs visible now. Actually visible. Started doing weighted core work and the payoff is immediate. Shoulders are carved. The transformation is accelerating — it's like my body remembered how to build muscle. This is what consistency looks like. Gym every morning, swim 3x a week, no cheat meals."),
     (27, 21, "grateful", 7, ["friends","anjali","circle"], ["belonging"],
-     "Anjali called",
-     "Anjali called from Berlin. Hadn't spoken in two months. Forty minutes about nothing in particular. Felt seen in a way I didn't know I was missing. The good friends just are. They don't need maintenance the same way."),
+     "Sophie called",
+     "Sophie called from Berlin. Hadn't spoken in two months. Forty minutes about nothing in particular. Felt seen in a way I didn't know I was missing. The good friends just are. They don't need maintenance the same way."),
     (26, 22, "proud", 8, ["ai","building","ship","coding"], ["seeing things through"],
      "Got the chat agent streaming",
      "Got the agent endpoint streaming tool calls in real-time. Watching the steps appear one by one in the browser is genuinely satisfying. Six weeks ago I didn't know how to build this. I do now."),
@@ -199,7 +211,7 @@ RAW = [
      "Three weeks from a year sober. Started thinking about whether to mark it somehow. Or just let it be a Tuesday. The Tuesday-version of marking it is the one I lean toward."),
     (18, 21, "anxious", 6, ["jobs","interview","prep"], ["performance"],
      "Tech screen tomorrow",
-     "Did three mock STAR answers with Anjali on a call. She caught me opening every answer with 'so basically' again. We laughed. Then I drilled it. Going to bed early tonight for once."),
+     "Did three mock STAR answers with Sophie on a call. She caught me opening every answer with 'so basically' again. We laughed. Then I drilled it. Going to bed early tonight for once."),
     (17, 19, "happy", 8, ["skate","play","park","progress"], ["play","progress"],
      "Did a transition!",
      "Skated for an hour and a half. Tried switching from forward to backward — fell twice. Got it on the third try. Cleanly. Squealed out loud like an actual child. There was a couple on a bench and they laughed with me, not at me."),
@@ -209,19 +221,22 @@ RAW = [
     (15, 23, "reflective", 7, ["communication","self","jobs","interview"], ["working on self"],
      "Did the interview",
      "Three hours. I didn't ramble this time. Asked clarifying questions before answering. Said 'I don't know, here's how I'd think about it' twice and meant both. That's a different person than two months ago."),
+    (21, 6, "confident", 8, ["gym","abs","fitness","beach"], ["beach body progress"],
+     "Four weeks, full six-pack visible",
+     "All six abs showing now. Chest is defined, arms are solid, the v-cut is sharp. Four weeks of consistent work and the transformation is undeniable. People are noticing — 'you're looking cut' at the grocery store. Swimming's gotten easy, can do 50 laps without thinking. This is the midway point and the momentum is real."),
 
     # =============================================================
-    # Last 2 weeks — Vikram resolution, friend circle warmth
+    # Last 2 weeks — John resolution, friend circle warmth
     # =============================================================
-    (14, 22, "angry", 7, ["friends","vikram","bad-friend","trust","boundaries"], ["used by friends","trust fatigue"],
-     "Found out Vikram lied",
-     "Vikram told me he 'couldn't' come help me move last month. Today Sahir mentioned Vikram was at a concert that night with two other guys. So he just didn't want to. I keep extending grace I don't have. I think I'm done. The 'done' doesn't have a satisfying movie scene. It's a small quiet thing."),
+    (14, 22, "content", 7, ["friends","boundaries","growth","self"], ["working on self"],
+     "Said no to something",
+     "John texted asking for help moving stuff again. I said 'Not this time, man.' No elaborate reason, no guilt spiral. Just 'not this time.' He said okay. The version of me from two months ago would have overexplained and then done it anyway. Turns out boundaries aren't about being mean to people — they're about being honest about what you actually have to give. Feels good."),
     (13, 20, "calm", 7, ["walk","music","house","evening"], ["enjoyment"],
      "Evening walk, Mall Grab set",
      "Watched the sun go down with a Mall Grab set in my ears. Forty minutes. Came home and made aloo paratha. The little life. People underestimate the little life."),
     (12, 21, "grateful", 7, ["friends","kabir","circle"], ["belonging"],
-     "Kabir, no agenda",
-     "Kabir dropped by. Brought a book he thought I'd like. Stayed for tea. Didn't try to fix anything, didn't ask about jobs. The friends who don't ask about progress are the most healing kind."),
+     "Bob, no agenda",
+     "Bob dropped by. Brought a book he thought I'd like. Stayed for tea. Didn't try to fix anything, didn't ask about jobs. The friends who don't ask about progress are the most healing kind."),
     (11, 22, "frustrated", 6, ["ai","work","bug","coding"], ["work pattern"],
      "Memory leak hunt",
      "Spent four hours hunting a memory leak in the embedding cache. Was a stupid one — a circular reference in the LRU eviction. The bug is fixed. The four hours aren't."),
@@ -241,9 +256,15 @@ RAW = [
     (7, 19, "happy", 8, ["skate","play","tricks","park","progress"], ["play","progress"],
      "Backwards skating, a full lap",
      "Could skate backwards for an entire lap without falling today. A month ago I couldn't go more than three meters. Tried a one-foot glide on the way home, in front of an audience of one bored dog. Stayed up. Felt invincible for thirty seconds."),
+    (7, 8, "proud", 8, ["gym","fitness","beach","abs","body"], ["achieved goal"],
+     "Six weeks, beach ready",
+     "Went to the beach today feeling good. Abs are carved, shoulders are broad, arms are defined. Six weeks from 'first day at gym' to feeling genuinely confident without a shirt. The discipline paid off exactly the way it should. Not vain about it — just proud of showing up 42 days straight. This body is earned."),
+    (14, 8, "proud", 8, ["gym","fitness","beach","body","abs"], ["achieved goal"],
+     "Five weeks, beach body locked",
+     "Went to the gym and just... felt it. The strength. The definition. Everything is carved now — not just abs but the whole physique. Shoulders are boulder-shaped, chest is full, legs are solid. Five weeks of showing up every single day. Swimming 3x a week without missing once. This is what discipline builds. Feels good to feel powerful again."),
     (6, 22, "lonely", 6, ["friends","missing","fomo","fun"], ["isolation chosen"],
-     "Sahir's birthday I missed",
-     "Pictures from Sahir's birthday went up on the chat. Everyone there. Beach. Looked beautiful. I chose not to go because I had a technical interview the morning after. Both things are true: it was the right call, and I'm sad I wasn't there. Holding both."),
+     "Alex's birthday I missed",
+     "Pictures from Alex's birthday went up on the chat. Everyone there. Beach. Looked beautiful. I chose not to go because I had a technical interview the morning after. Both things are true: it was the right call, and I'm sad I wasn't there. Holding both."),
     (5, 21, "anxious", 7, ["jobs","decision","ai","offer"], ["uncertainty","values clarity"],
      "Two offers in the funnel",
      "Bangalore startup making an offer Monday. Berlin remote startup wants a third-round. Both feel real. Suddenly the abstract 'job hunt' has corners and shapes and I have to decide which one I am. Anxious in a different way — not because nothing's happening, because something is."),
@@ -252,7 +273,7 @@ RAW = [
      "Listed what's actually shifted since I came back: ramble less, hold my breath less, eat real food, lift my eyes from the screen. The journal entries from week one are unreadable to me now — anxious, scattered, lying to myself in subtle ways. The current me sees that. That's the gift."),
     (3, 20, "grateful", 8, ["friends","circle","kabir","sahir","trust"], ["belonging"],
      "Dinner with the actual circle",
-     "Five of us at Kabir's. No agenda. The kind of dinner where you can put your feet on the chair and someone tells a stupid joke at exactly the right time. Vikram wasn't there and nobody noticed. The good circle is real. The one rotten apple doesn't define the orchard."),
+     "Five of us at Bob's. No agenda. The kind of dinner where you can put your feet on the chair and someone tells a stupid joke at exactly the right time. John wasn't there and nobody noticed. The good circle is real. The one rotten apple doesn't define the orchard."),
     (2, 21, "happy", 8, ["skate","music","house","play","sober"], ["play","enjoyment"],
      "Best skate evening yet",
      "Skated for an hour and a half to a Jamie xx set. Light was perfect. Did a clean stop-and-pivot in front of a kid who said 'whoa.' Came home and just sat with the feeling. This is what sober-late-twenties was supposed to be. I didn't know it could be like this."),
@@ -269,7 +290,7 @@ import re as _re_seed
 
 # Names the character mentions across the seeded entries. Extracting these
 # by capitalised-word heuristic so we don't need an LLM at seed time.
-_KNOWN_NAMES = {"Kabir", "Vikram", "Sahir", "Anjali", "Mom", "Amma",
+_KNOWN_NAMES = {"Bob", "John", "Alex", "Sophie", "Mom", "Amma",
                 "Rajiv", "Priya"}
 
 

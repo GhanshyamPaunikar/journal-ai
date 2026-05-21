@@ -32,6 +32,7 @@ import json
 import math
 import os
 import re
+import random
 import threading
 import uuid
 import time
@@ -62,6 +63,7 @@ JOURNAL_FILE = os.path.join(DATA_DIR, "journal.json")
 CHAT_FILE = os.path.join(DATA_DIR, "chat.json")
 SPOTIFY_FILE = os.path.join(DATA_DIR, "spotify.json")  # config + tokens
 INSIGHTS_FILE = os.path.join(DATA_DIR, "insights.json")  # phase-3 insight engines
+CLUSTER_NAMES_FILE = os.path.join(DATA_DIR, "cluster_names.json")  # LLM-generated cluster name cache
 
 STOPWORDS = set("""
 a an the and or but if then so of to in on at by for with from into out up
@@ -352,18 +354,22 @@ EMOTIONS = [
 ]
 
 def analyze_entry(text: str) -> Dict[str, Any]:
-    prompt = f"""You are an assistant that classifies a journal entry.
-Return ONLY a compact JSON object. No prose. No markdown fences.
+    prompt = f"""You classify one journal entry. Return ONLY a compact JSON object. No prose. No fences.
 
-Schema:
+Schema (every field required, even if empty):
 {{
-  "emotion": "one of: {', '.join(EMOTIONS)}",
-  "intensity": integer 1-10,
-  "summary": "one concise sentence, <= 20 words",
-  "tags": ["2-4 lowercase single-word topic tags"],
-  "themes": ["1-3 short themes, 1-3 words each"],
-  "people": ["proper-name people mentioned by name in the entry. Use the form the writer used (e.g. 'Mom', 'Kabir', 'Vikram'). Omit if no one is named. Do NOT invent."]
+  "emotion":   "the dominant feeling — exactly one of: {', '.join(EMOTIONS)}",
+  "intensity": "integer 1-10. 1 = barely felt, 5 = clearly present, 10 = overwhelming",
+  "summary":   "one concrete sentence, <= 20 words. Say what HAPPENED or what the writer felt — never start with 'The writer' or 'They'",
+  "tags":      "2-4 lowercase single-word nouns naming what the entry is about (work, sleep, partner, anxiety, running). No verbs. No adjectives. No '#'",
+  "themes":    "1-3 short phrases (1-4 words each) for the deeper pattern (e.g. 'work boundaries', 'fear of being seen', 'rebuilding routine'). Not just rewordings of tags",
+  "people":    "names of OTHER people the writer mentioned, in the form they wrote (Mom, Sam, dad, Dr. Lee). Skip the writer themselves and skip generic words like 'people' / 'friends'. Omit if nobody named. Never invent."
 }}
+
+Rules:
+- Don't guess emotion if the entry is purely factual — use 'neutral'.
+- Tags must actually appear (literally or by clear paraphrase) in the entry.
+- Don't include 'journal', 'entry', 'writing' as tags — those describe the act, not the content.
 
 Entry:
 \"\"\"{text}\"\"\"
@@ -1769,23 +1775,25 @@ def plan_tools(message: str) -> dict:
     prompt = f"""User message: \"\"\"{message}\"\"\"
 
 Available tools:
-- search_entries(query: str, k: int=5) — semantic + keyword search across the journal
-- get_entry(ref: str) — fetch one entry by 8-char id or by date (YYYY-MM-DD)
-- list_themes(period_days: int=30) — top tags, emotions, and themes across the period (USE for "what themes / topics / patterns do I write about")
-- period_summary(period: "week"|"month") — entry counts + avg intensity + recent summaries
-- emotion_extremes(emotion: str, k: int=5) — entries scored by (emotion polarity × intensity). USE for "happiest / saddest / hardest / best / worst day" or "when was I most X". For positive: emotion="positive"; for negative: emotion="negative"; or a specific feeling like "anxious".
+- search_entries(query: str, k: int=5) — semantic + keyword search across the journal. Default for "tell me about X / when did I write about Y / find entries about Z".
+- get_entry(ref: str) — fetch one entry by 8-char id or by date (YYYY-MM-DD). Only when they reference a specific id or exact date.
+- list_themes(period_days: int=30) — top tags, emotions, and themes across the period. For "what themes / topics / patterns / recurring things do I write about".
+- period_summary(period: "week"|"month") — entry counts + avg intensity + recent summaries. For "how was my week / month / how have I been lately".
+- emotion_extremes(emotion: str, k: int=5) — entries scored by (emotion polarity × intensity). For "happiest / hardest / saddest / best / worst day" or "when was I most X". Use emotion="positive" for happiest/best, "negative" for hardest/saddest/worst, or a specific feeling like "anxious".
 
-Routing hints (follow these unless the question is clearly different):
-- "themes / topics / patterns / what do I write about" → list_themes (period_days=60 unless they specify) PLUS search_entries with the most relevant keyword from their question.
-- "happiest / hardest / saddest / best / worst day" → emotion_extremes (emotion="positive" for happiest/best, "negative" for hardest/saddest/worst).
-- "when did I feel X / when was I X" → emotion_extremes with emotion=X PLUS search_entries.
-- "what changed / vs last month / compared to a year ago" → period_summary.
-- Any reference to a feeling/person/topic/time without one of the above patterns → search_entries.
+Routing rules (pick the SIMPLEST plan that answers it):
+- Small talk, greetings, thanks, jokes, casual ack → tools = [] (empty).
+- General-knowledge / help-me-write / opinion questions where the journal wouldn't help → tools = [] (empty).
+- "themes / topics / patterns / what do I write about" → list_themes (period_days=60 unless specified). Add search_entries only if they also named a specific topic.
+- "happiest / hardest / saddest / best / worst day" → emotion_extremes (one call).
+- "when did I feel X / when was I most X / am I usually X" → emotion_extremes with emotion=X.
+- "how was my [week|month]" / "lately" / "this period" → period_summary.
+- Anything mentioning a person, feeling, topic, place, or time without matching above → search_entries.
 
-Rules:
-- Pick 1–3 tools whenever the question is about the journal. Small talk ("hi", "thanks") gets 0 tools.
-- Set ask_back ONLY when the message is genuinely impossible to act on (e.g. a bare "yes" with no prior context). NEVER use ask_back for plain questions like "what themes come up" or "what's my happiest day" — those have a clear answer in the data.
-- Never invent ids or dates.
+Anti-patterns:
+- DO NOT pick 3 tools when 1 will answer. Over-retrieval makes the answer worse.
+- DO NOT use ask_back unless the message is genuinely impossible to act on (a bare "yes" with no context, an unparseable fragment). Plain questions are NEVER ask_back.
+- Never invent ids or dates. If you'd need one, use search_entries instead.
 
 Respond with this JSON shape exactly (no prose, no fences):
 {schema_hint}
@@ -1901,20 +1909,20 @@ def build_agent_prompt(message: str, observations: List[dict],
         "=== Their current message ===\n"
         f"{message}\n\n"
         "Now reply. RULES:\n"
-        "1. ANSWER THEIR QUESTION. That's the only job. Anything that doesn't help answer it goes unused.\n"
-        "2. The background above is NOT a list of things to mention. Most of it is irrelevant to most questions. "
-        "Only cite an entry when that specific entry actually answers part of their question. "
-        "If the question doesn't need a citation (e.g. 'how are you', 'what should I do today', 'tell me a joke'), DON'T cite anything.\n"
-        "3. Talk like a real person to a friend. Use contractions. Fragments are fine. "
-        "Banned phrases: 'Based on your entries', 'It seems', 'It sounds like', 'I notice', 'I want to acknowledge', "
-        "'I'm hearing'. None of those go in the reply.\n"
-        "4. Length: 1–4 sentences for almost everything. 5+ sentences ONLY if they asked for depth.\n"
-        "5. If you do cite, use [cite:id] format with the short id shown above. One or two citations max, "
-        "not a parade.\n"
-        "6. Don't summarise their data back at them. Don't 'connect dots' that don't need connecting. "
-        "If their question is simple, your reply is simple.\n"
-        "7. If this is a follow-up to the conversation above, BUILD ON what you already said — "
-        "don't ask 'what do you mean' or restate the previous reply.\n\n"
+        "1. ANSWER THE MESSAGE THEY ACTUALLY SENT. That's the only job. If you're tempted to add 'context' or 'background', stop — it doesn't help.\n"
+        "2. Background ≠ things to mention. Most of it is irrelevant to most messages. "
+        "Cite an entry ONLY when that specific entry directly answers part of their question. "
+        "Plain questions like 'how are you' / 'what should I do' / 'tell me a joke' / 'help me write X' get ZERO citations.\n"
+        "3. If the background is empty or nothing matches, just answer from common sense — DO NOT say 'I don't have entries about that' or apologise. Just answer.\n"
+        "4. Voice: talk like a real friend in a chat. Contractions, fragments, 'yeah', 'honestly', occasional swearing if they swear. "
+        "Banned: 'Based on your entries', 'It seems', 'It sounds like', 'I notice', 'I want to acknowledge', 'I'm hearing', 'That's a great question'. "
+        "Never use them, in any form.\n"
+        "5. Length matches the message. One-liner question → one-liner reply. Quick check-in → 1–2 sentences. "
+        "Real question → 2–4 sentences. 5+ ONLY if they explicitly asked for depth or a list.\n"
+        "6. If you cite, use [cite:id] with the 8-char id shown above. One or two MAX, never a parade.\n"
+        "7. Don't 'connect dots' the user didn't ask you to connect. Don't read their entries back at them. Don't psychoanalyse uninvited.\n"
+        "8. Follow-up turns ('but why', 'tell me more', 'and that?'): build on the previous reply directly. Do NOT ask 'what do you mean' or restate what you just said.\n"
+        "9. If the message is hostile, weird, or clearly off-topic (testing you, joking, venting), match the register honestly — short, real, not preachy.\n\n"
         "Innerbloom:"
     )
 
@@ -2449,9 +2457,20 @@ def reflect(entry_id: str):
     entry = next((e for e in entries if e["id"] == entry_id), None)
     if not entry:
         raise HTTPException(404, "Entry not found")
-    prompt = f"""Read this journal entry and write exactly 3 thoughtful, open-ended
-follow-up questions the author could reflect on. No numbering, no preamble.
-Return them on separate lines.
+    prompt = f"""Read this journal entry. Write exactly 3 follow-up questions the author could sit with.
+
+Each question must:
+- Be a single sentence, under 18 words.
+- Point at something specific from what they wrote — not a generic prompt.
+- Avoid therapy-speak ("how did that make you feel", "what's coming up for you").
+- Open, not leading — don't smuggle in an answer.
+
+Pick three different angles from this list:
+  1) What's underneath this — what they didn't quite say.
+  2) What this entry says about a pattern they may or may not see.
+  3) The next small concrete thing they could do or notice.
+
+Return ONLY the three questions, one per line. No numbering. No preamble.
 
 Entry:
 \"\"\"{entry['text']}\"\"\"
@@ -2501,28 +2520,60 @@ def connections(entry_id: str, k: int = 4):
     return {"related": related}
 
 
+_COLD_START_PROMPTS = [
+    "What's on your mind right now, no filter?",
+    "If you only got one sentence today, what would it be?",
+    "What did today actually feel like — not what you'd say if asked, but the truth?",
+    "What's the thing you keep almost writing about but don't?",
+    "Where did your attention go today that surprised you?",
+]
+
+
 @app.get("/prompt")
 def get_prompt():
     entries = load_file(JOURNAL_FILE)
     if not entries:
-        return {"prompt": "What's on your mind right now, no filter?"}
+        # Random rotation so reopening the app doesn't show the same opener every time.
+        return {"prompt": random.choice(_COLD_START_PROMPTS)}
 
-    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:5]
-    context = "\n".join(
-        f"- ({e.get('emotion','?')}) {e.get('summary') or e.get('text','')[:120]}"
-        for e in recent
-    )
+    recent = sorted(entries, key=lambda e: e.get("timestamp", ""), reverse=True)[:6]
+    context_lines = []
+    for e in recent:
+        ts = (e.get("timestamp") or "")[:10]
+        emo = e.get("emotion", "?")
+        intensity = e.get("intensity")
+        themes = ", ".join((e.get("themes") or [])[:3]) or "—"
+        snippet = (e.get("summary") or e.get("text", ""))[:140].replace("\n", " ").strip()
+        context_lines.append(f"- [{ts}] {emo}/{intensity} · themes: {themes} · {snippet}")
+    context = "\n".join(context_lines)
 
-    prompt = f"""You write sharp, personal journal prompts. Based on this person's recent emotional themes,
-write ONE journaling prompt — one sentence, under 22 words.
-The prompt should invite honest self-examination, not generic reflection.
-Connect to a specific theme or tension you notice. No preamble. No quotes. Just the prompt.
+    # Mode rotates each call so the user doesn't get the same flavour two days running.
+    modes = [
+        ("present", "Anchor in something they wrote in the last 3 days — invite them to look again, not summarise it back."),
+        ("tension", "Name a tension or contradiction visible across the entries and ask them to sit with one side of it."),
+        ("absence", "Point at something they keep almost saying but haven't — ask the question they're circling."),
+        ("forward", "Look at what they want and ask one specific question about the next small step."),
+    ]
+    mode_label, mode_rule = random.choice(modes)
 
-Recent mood and topics:
+    prompt = f"""You write one journaling prompt for this specific person. Their recent entries:
+
 {context}
-"""
-    out = call_llama(prompt, temperature=0.92).strip().strip('"').strip()
-    out = out.splitlines()[0] if out else "What are you tolerating right now that you haven't admitted to yourself?"
+
+Write ONE prompt — a single sentence, ≤ 22 words.
+Mode for this prompt: {mode_label} — {mode_rule}
+
+Hard rules:
+- Personal and concrete. Not generic. Not therapeutic-speak.
+- Don't quote them directly. Don't name people from their entries.
+- Don't include the word "journal", "reflect", or "today" unless they actually fit.
+- No preamble. No quotes around it. Just the sentence."""
+    out = call_llama(prompt, temperature=0.92).strip().strip('"').strip("`").strip()
+    out = out.splitlines()[0].strip(" -•") if out else random.choice(_COLD_START_PROMPTS)
+    # Final safety: if the model produced something obviously wrong (too long / starts with 'Here'),
+    # fall back to a generic opener rather than ship gibberish.
+    if len(out) > 240 or out.lower().startswith(("here is", "here's", "prompt:", "sure")):
+        out = random.choice(_COLD_START_PROMPTS)
     return {"prompt": out}
 
 
@@ -4756,12 +4807,154 @@ def get_insights_status():
 
 # --- Memory Graph ---------------------------------------------------------
 #
-# Build a node-edge graph from journal entries. Nodes are entries; edges
-# connect entries that share themes/tags/emotions, weighted by Jaccard
-# similarity. The frontend lays this out with a force simulation.
-#
-# Embedding-based edges are also possible but Jaccard on tags/themes is
-# fast, deterministic, and produces visibly meaningful clusters.
+# Build a node-edge graph from journal entries. Nodes are entries.
+# Edges = cosine similarity between entry embeddings (semantic, not just
+# tag overlap), with an IDF-Jaccard fallback for entries whose embeddings
+# haven't been backfilled yet. Clusters get a real name from the LLM,
+# cached on disk by membership fingerprint so they stay stable across
+# reloads and only re-name when a cluster's makeup meaningfully shifts.
+
+# Cluster-naming cache + helpers --------------------------------------------
+import hashlib as _hashlib
+
+_CLUSTER_NAME_LOCK = threading.Lock()
+_CLUSTER_NAME_PENDING: set = set()  # fingerprints currently being LLM-named
+
+
+def _load_cluster_names() -> Dict[str, dict]:
+    """Cache shape: { fingerprint16: {name, member_ids, created_at, used_at} }"""
+    return load_file(CLUSTER_NAMES_FILE, default={}) or {}
+
+
+def _save_cluster_names(data: Dict[str, dict]):
+    save_file(CLUSTER_NAMES_FILE, data)
+
+
+def _cluster_fingerprint(member_ids: List[str]) -> str:
+    s = ",".join(sorted(member_ids))
+    return _hashlib.md5(s.encode()).hexdigest()[:16]
+
+
+def _find_similar_cluster(member_ids: set, cache: Dict[str, dict],
+                          threshold: float = 0.70) -> Optional[dict]:
+    """If a previously-named cluster's membership overlaps ours by >= threshold
+    (Jaccard), reuse its name. Lets the cluster keep its identity as you add
+    a handful of new entries without firing the LLM again every time."""
+    best, best_score = None, threshold
+    for fp, rec in cache.items():
+        cached_members = set(rec.get("member_ids") or [])
+        if not cached_members:
+            continue
+        inter = cached_members & member_ids
+        union = cached_members | member_ids
+        if not union:
+            continue
+        j = len(inter) / len(union)
+        if j > best_score:
+            best, best_score = rec, j
+    return best
+
+
+def _llm_name_cluster(member_entries: List[dict], hint_terms: List[str]) -> Optional[str]:
+    """Ask the LLM for a tight 2-4 word noun phrase that names this cluster.
+    Hints are deliberately withheld — leaking the existing tag/theme into the
+    prompt causes the model to echo it ('Used By Friends' → 'Used By Friends').
+    The model has to *read the entries* and write a real human heading."""
+    if not member_entries:
+        return None
+    samples = member_entries[:7]
+    lines = []
+    for e in samples:
+        summary = (e.get("summary") or e.get("text", ""))[:200].replace("\n", " ").strip()
+        lines.append(f"- ({e.get('emotion','?')}) {summary}")
+
+    prompt = f"""Below are journal entries the system grouped because they're about the same thing.
+Read them, then write a SHORT chapter heading that names what they're about.
+
+Entries:
+{chr(10).join(lines)}
+
+What to write:
+- 2 to 4 words. Title Case. A noun phrase, not a sentence.
+- Name the SITUATION or LIFE-AREA, not the feeling. ("Stalled Job Hunt", not "Frustration". "Late Nights With Friends", not "Tired".)
+- Use language a human would say out loud. Not "Used By Friends". Not "Working On Self". Not "Pace Overcommitting". Those read like database tags, not headings.
+- Don't name specific people — say "One-Sided Friendships" not "Vikram Issues".
+- If they're all about one concrete activity, name the activity ("Skating Practice", "Cooking Routine").
+- If they're all about an internal pattern, name the pattern ("Sober Identity", "Old City Nostalgia", "Saying Yes Too Often").
+
+Heading examples that are good: Job Hunt · Sober Mornings · One-Sided Friendships · Building The App · UK Nostalgia · Mom Calls · Skate Progress · Sleep Disruption
+Headings that are BAD (tag echoes, not real names): Used By Friends · Working On Self · Pace Overcommitting · Trust Fatigue · Seeing Things Through
+
+Output ONLY the heading. No quotes, no preamble, no period.
+
+Heading:"""
+
+    try:
+        raw = call_llama(prompt, temperature=0.4, timeout=60).strip()
+    except Exception:
+        return None
+
+    # Take just the first line, strip common prefixes the model leaks
+    candidate = raw.splitlines()[0] if raw else ""
+    candidate = candidate.strip().strip('"').strip("'").strip("*").strip()
+    candidate = re.sub(r"^(name|cluster|theme|title|chapter|heading)\s*:?\s*", "",
+                       candidate, flags=re.IGNORECASE).strip()
+    candidate = re.sub(r"\.$", "", candidate)
+
+    if not candidate or len(candidate) > 40 or len(candidate.split()) > 6:
+        return None
+    # Reject clear failures
+    low = candidate.lower()
+    if low in {"name", "cluster", "theme", "title"} or low.startswith(("here", "this is", "sure")):
+        return None
+    return candidate
+
+
+def _background_name_clusters(tasks: List[dict]):
+    """Each task: {fp, member_ids, member_entries, hint_terms}.
+    Names them via LLM, persists to disk. Skipping fps already in-flight."""
+    if not tasks:
+        return
+    fresh: Dict[str, dict] = {}
+    for t in tasks:
+        fp = t["fp"]
+        try:
+            name = _llm_name_cluster(t["member_entries"], t.get("hint_terms", []))
+        except Exception:
+            name = None
+        if name:
+            fresh[fp] = {
+                "name": name,
+                "member_ids": t["member_ids"],
+                "created_at": datetime.now().isoformat(timespec="seconds"),
+            }
+        # Always clear pending so a future call can retry on failure
+        with _CLUSTER_NAME_LOCK:
+            _CLUSTER_NAME_PENDING.discard(fp)
+
+    if fresh:
+        with _CLUSTER_NAME_LOCK:
+            cache = _load_cluster_names()
+            cache.update(fresh)
+            # Bound the cache so it doesn't grow forever (keep newest 500)
+            if len(cache) > 500:
+                items = sorted(cache.items(), key=lambda kv: kv[1].get("created_at", ""), reverse=True)
+                cache = dict(items[:500])
+            _save_cluster_names(cache)
+
+
+def _entry_vec(e: dict) -> List[float]:
+    """Return the entry's best representative embedding vector — max-pool of
+    chunks if present (catches the strongest signal in long entries), else
+    the top-level entry embedding. Returns [] if neither exists."""
+    chunks = e.get("chunks") or []
+    if chunks:
+        # Max-pool component-wise across chunks (same as retrieval)
+        vecs = [c.get("embedding") for c in chunks if c.get("embedding")]
+        if vecs:
+            dim = len(vecs[0])
+            return [max(v[i] for v in vecs) for i in range(dim)]
+    return e.get("embedding") or []
 
 @app.get("/graph")
 def get_graph(limit: int = 250, min_weight: float = 0.22):
@@ -4836,24 +5029,65 @@ def get_graph(limit: int = 250, min_weight: float = 0.22):
         wu = sum(feat_idf.get(f, 1.0) for f in union)
         return wi / wu if wu else 0.0
 
-    # ---- Edges -----------------------------------------------------------
+    # ---- Edges: SEMANTIC similarity (embeddings) + Jaccard tiebreak -----
+    # Primary signal is cosine over entry embeddings. Two entries are linked
+    # when their semantic similarity clears EMBED_THRESHOLD. For pairs where
+    # one or both entries don't have an embedding yet (cold-start / mid-
+    # backfill), we fall back to IDF-Jaccard so the graph still works.
+    EMBED_THRESHOLD = 0.62
+    JACCARD_FALLBACK_THRESHOLD = max(0.18, min_weight)
+    entry_by_id = {e["id"]: e for e in entries}
+    vecs = {nid: _entry_vec(entry_by_id[nid]) for nid in ids}
+
     edges = []
     for i in range(N):
-        a = feats[ids[i]]
-        if not a: continue
+        a_id = ids[i]
+        a_vec = vecs[a_id]
+        a_feats = feats[a_id]
         for j in range(i + 1, N):
-            b = feats[ids[j]]
-            if not b: continue
-            shared = a & b
-            if not shared: continue
-            w = _weighted_jaccard(a, b)
-            if w < min_weight: continue
+            b_id = ids[j]
+            b_vec = vecs[b_id]
+            b_feats = feats[b_id]
+
+            cos = cosine_similarity(a_vec, b_vec) if a_vec and b_vec else 0.0
+            jac = _weighted_jaccard(a_feats, b_feats) if a_feats and b_feats else 0.0
+
+            # Primary gate: semantic similarity. Secondary: shared concrete tags.
+            keep = False
+            weight = 0.0
+            if cos >= EMBED_THRESHOLD:
+                # Boost slightly when tags also align (entries that share both
+                # meaning AND vocabulary). Cap at 1.0.
+                weight = min(1.0, cos + 0.15 * jac)
+                keep = True
+            elif (not a_vec or not b_vec) and jac >= JACCARD_FALLBACK_THRESHOLD:
+                # Backfill in progress — keep tag-based edge so the graph isn't empty
+                weight = jac
+                keep = True
+
+            if not keep:
+                continue
+
+            shared = sorted(a_feats & b_feats,
+                            key=lambda f: -feat_idf.get(f, 1.0))[:5]
             edges.append({
-                "source": ids[i],
-                "target": ids[j],
-                "weight": round(w, 3),
-                "shared": sorted(shared, key=lambda f: -feat_idf.get(f, 1.0))[:5],
+                "source": a_id,
+                "target": b_id,
+                "weight": round(weight, 3),
+                "shared": shared,
             })
+
+    # Kick off a tiny backfill in the background so missing embeddings get
+    # filled by the next /graph call. Doesn't block this response.
+    if any(not v for v in vecs.values()):
+        def _bg_graph_backfill():
+            all_entries = load_file(JOURNAL_FILE)
+            if backfill_entry_embeddings(all_entries):
+                save_file(JOURNAL_FILE, all_entries)
+        try:
+            _run_insight_in_background("graph_embed_backfill", _bg_graph_backfill)
+        except Exception:
+            pass
 
     # ---- Connected components (union-find) -----------------------------
     parent: Dict[str, str] = {nid: nid for nid in ids}
@@ -5044,6 +5278,64 @@ def get_graph(limit: int = 250, min_weight: float = 0.22):
 
     clusters_out.sort(key=lambda c: (c["id"] == "solo", -c["size"], c["name"]))
 
+    # ---- LLM cluster naming (cached + dynamic) -------------------------
+    # Each cluster gets a fingerprint over its sorted member ids. If we've
+    # named this exact composition before, reuse the cached name. If a
+    # previously-named cluster overlaps ours by >=70% (you added a couple
+    # entries), inherit its name so the cluster stays recognisable. Only
+    # genuinely new compositions trigger a (background) LLM naming pass.
+    cache = _load_cluster_names()
+    naming_tasks: List[dict] = []
+    naming_used_names: set = set()
+    for cl in clusters_out:
+        if cl["id"] == "solo" or cl.get("size", 0) < 2:
+            cl["named_by"] = "fallback"
+            continue
+        members = cl.get("members") or []
+        fp = _cluster_fingerprint(members)
+        cl["fingerprint"] = fp
+
+        cached = cache.get(fp)
+        if cached and cached.get("name"):
+            cl["name"] = cached["name"]
+            cl["named_by"] = "cache"
+        else:
+            similar = _find_similar_cluster(set(members), cache, threshold=0.70)
+            if similar and similar.get("name"):
+                cl["name"] = similar["name"]
+                cl["named_by"] = "cache_similar"
+            else:
+                # Queue an LLM name. We don't block; the next /graph call
+                # picks it up from cache. Use the fallback (extracted tag/theme)
+                # name in the meantime.
+                cl["named_by"] = "pending"
+                with _CLUSTER_NAME_LOCK:
+                    if fp not in _CLUSTER_NAME_PENDING:
+                        _CLUSTER_NAME_PENDING.add(fp)
+                        member_entries = [entry_by_id[mid] for mid in members
+                                          if mid in entry_by_id]
+                        naming_tasks.append({
+                            "fp": fp,
+                            "member_ids": list(members),
+                            "member_entries": member_entries,
+                            "hint_terms": [],  # deliberately withheld — see _llm_name_cluster
+                        })
+
+        # De-dupe display names (e.g. two clusters both inherit "Job Hunt")
+        if cl["name"] in naming_used_names:
+            cl["name"] = f"{cl['name']} ({cl['size']})"
+        naming_used_names.add(cl["name"])
+
+    if naming_tasks:
+        try:
+            _run_insight_in_background(
+                "cluster_naming",
+                _background_name_clusters,
+                naming_tasks,
+            )
+        except Exception:
+            pass
+
     # ---- Per-node degree + cluster assignment --------------------------
     deg = Counter()
     for ed in edges:
@@ -5063,6 +5355,7 @@ def get_graph(limit: int = 250, min_weight: float = 0.22):
         "node_count": len(nodes),
         "edge_count": len(edges),
         "cluster_count": sum(1 for c in clusters_out if c["id"] != "solo"),
+        "pending_names": sum(1 for c in clusters_out if c.get("named_by") == "pending"),
     }
 
 
