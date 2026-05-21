@@ -17,16 +17,20 @@ Write honestly. Innerbloom finds the emotion under your words, sees who's actual
 
 ## What It Does
 
-You open a blank page and start typing. When you save, Innerbloom reads the entry once and tags it — the dominant **emotion** (one of 16), an **intensity** (1–10), a one-line **summary**, **tags**, deeper **themes**, and the **people** you mentioned. No friction, no forms. It just does it.
+You open a blank page and start typing — or dictate it with your voice. When you save, Innerbloom reads the entry once and tags it — the dominant **emotion** (one of 16), an **intensity** (1–10), a one-line **summary**, **tags**, deeper **themes**, and the **people** you mentioned. No friction, no forms. It just does it.
 
 Then everything builds on those signals:
 
 - **Chat** with your journal. A real agent loop plans, searches your entries, and answers in your terms — citing the exact entries it pulled from. Pick a voice: Companion, Observer, or Challenger.
 - **People** cards show who actually appears in your writing — their dominant emotion around you, how often, and the last entries they show up in.
-- **Insights** run four engines over your history: contradictions, emotional triggers, wellbeing trend, and narrative arc. They refresh in the background as you write.
+- **Insights** run four engines over your history: **Contradictions**, **Emotional Triggers**, a **Wellbeing Radar** (Burnout + Negative Spiral levels), and **Your Story** (identity, values, tensions, becoming). They refresh in the background as you write.
 - **Memory Graph** maps entries as nodes, links the ones that share meaning, and names each cluster automatically.
 - **Music & Mood** correlates your Spotify listening with how you felt (optional, PKCE OAuth).
 - **Month Ago Today** is a then-vs-now mirror — what stayed, what shifted, what you're still avoiding, what you're becoming, each claim cited.
+- **Stats & streaks** track your current/longest streak, total entries, an activity heatmap, word counts, and mood distribution.
+- **Adaptive prompts** offer a writing question tuned to your recent mood; **per-entry reflection questions** and **weekly/monthly reviews** go deeper when you want them.
+- **Search & export** — hybrid keyword + semantic search across everything, plus one-click Markdown export.
+- **Gentle nudges** — local, PWA-installable notifications: a morning prompt, an evening reflection if you skipped today, a streak-risk alert, a month-ago surfacing, and a wellbeing alert if burnout or a spiral creeps up. No server, no network.
 - **Crisis detection** quietly surfaces help resources if your writing signals self-harm or suicidal ideation.
 
 ![Chat](docs/Chat.webp)
@@ -74,9 +78,9 @@ Three voices, each a different system prompt:
 ### Insight engines
 Four engines, each cached to `data/insights.json` and refreshable on demand or automatically in the background as new entries land:
 - **Contradictions** — stated values vs. actual behavior, every claim backed by entry IDs.
-- **Triggers** — statistical correlation of tags with mood shifts, characterized in plain language.
-- **Wellbeing** — 14-day rolling burnout trend + 7-day emotional trajectory (levels are stats-driven; the LLM only writes the summary).
-- **Narrative** — identity, recurring values, tensions, and character arc.
+- **Emotional Triggers** — a positive/negative trigger map: which tags consistently lift or drop your mood, scored statistically and characterized in plain language.
+- **Wellbeing Radar** — two gauges, each rated *ok / watch / elevated / high*: **Burnout** (14-day rolling trend) and **Negative Spiral** (7-day emotional trajectory). Levels are stats-driven; the LLM only writes the one-line read.
+- **Your Story** — the narrative engine: identity, recurring values, the tensions you're holding, and where you're becoming.
 
 A background pipeline runs the engines in threads; `/insights/status` drives a progress indicator in the UI.
 
