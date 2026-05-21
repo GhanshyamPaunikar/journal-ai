@@ -39,19 +39,19 @@ The fourth is about your narrative. Who are you becoming? What values keep reapp
 
 ![Insights](docs/insights.webp)
 
-![Emotional Triggers](docs/Emotional\ trigger.webp)
+![Emotional Triggers](docs/emotional-trigger.webp)
 
 You click to the graph. Your entries are mapped as a living landscape—entries as nodes, pulled together when they share meaning. The system named the clusters automatically. Not by tags you gave it, but by what actually distinguishes each grouping. *Returning Adjustments. One-Sided Friendships. Job Offer Preparation. Sober Nights.* You can click a cluster and watch how your emotions shifted through that whole thread. Drag it around. Hover to see entry details. It's your mind, rendered as a map.
 
-![Memory Graph](docs/Memory\ graph.webp)
+![Memory Graph](docs/memory-graph.webp)
 
 You also notice: Spotify is connected. You can see your recent plays, your most-played artists, your listening patterns by time of day and day of week. You can see which artists kept you company on your hard days. The system correlates your music with your mood.
 
-![Music and Mood](docs/Music\ and\ mood.webp)
+![Music and Mood](docs/music-and-mood.webp)
 
 Then one day you notice something you almost missed. It's been 30 days since that first entry. The system surfaces a *Month Ago Today* card—a then-vs-now mirror. What's stayed the same? Your baseline values. What's shifted? Real changes, cited so you can read the proof yourself. What are you still avoiding? The pattern you haven't touched. What are you becoming? Not destination—direction. The shape your life is actually taking.
 
-![AI Reflection](docs/Ai\ reflection.webp)
+![AI Reflection](docs/ai-reflection.webp)
 
 Throughout all of this, there's a quiet gentleness. You get a journaling question in the morning if you want one. An evening nudge if you skip a day. A streak alert if you're in the zone and about to break your run. These notifications fire in-browser, and if you install Innerbloom as an app on your phone, they'll reach you anywhere.
 
