@@ -45,7 +45,7 @@ def section(title):
 def fake_llama(prompt, system="", temperature=0.7, timeout=180):
     if "Return ONLY a compact JSON object" in prompt:
         return '{"emotion":"happy","intensity":7,"summary":"A good day at work.","tags":["work","life","focus"],"themes":["productivity","growth"]}'
-    if "exactly 3 thoughtful" in prompt:
+    if "exactly 3 follow-up questions" in prompt:
         return "What felt most alive today?\nWhat would you change if you could?\nWhat are you avoiding naming?"
     if "ONE short journaling prompt" in prompt:
         return "What surprised you today?"
@@ -460,6 +460,82 @@ def test_health():
 
 
 # =========================================================================
+# People (social CRM)
+# =========================================================================
+
+def test_people():
+    section("People (social CRM)")
+    fake_analysis = {
+        "emotion": "happy", "intensity": 6, "summary": "Coffee with Bob.",
+        "tags": ["coffee"], "themes": ["friendship"], "people": ["Bob"],
+    }
+    with patch.object(innerbloom_app, "analyze_entry", return_value=fake_analysis), \
+         patch.object(innerbloom_app, "embed", return_value=None):
+        r = client.post("/save", json={"text": "Coffee with Bob was lovely."})
+        check("POST /save 200 (people)", r.status_code == 200, r.text[:120])
+
+    r = client.get("/people")
+    people = r.json()["people"]
+    bob = next((p for p in people if p["key"] == "bob"), None)
+    check("GET /people auto-created Bob", bob is not None, str([p["name"] for p in people]))
+    check("Bob has a CRM record", bool(bob and bob["has_record"]))
+    check("Bob mention counted", bool(bob and bob["mentions"] >= 1))
+
+    r = client.put("/people/bob", json={"relationship": "friend", "cadence_days": 7, "birthday": "03-12"})
+    check("PUT /people/{key} 200", r.status_code == 200 and r.json()["relationship"] == "friend")
+    check("birthday_in_days computed", r.json().get("birthday_in_days") is not None)
+
+    r = client.put("/people/bob", json={"relationship": "enemy"})
+    check("PUT /people invalid relationship 400", r.status_code == 400)
+
+    r = client.post("/people/bob/notes", json={"text": "Rough patch at work — check in next week."})
+    check("POST /people/{key}/notes 200", r.status_code == 200)
+    nid = r.json()["note"]["id"]
+
+    r = client.get("/people/bob")
+    check("GET /people/{key} 200 + note present", r.status_code == 200
+          and any(n["id"] == nid for n in r.json()["notes"]))
+
+    r = client.post("/people/bob/notes", json={"text": "   "})
+    check("POST empty note 400", r.status_code == 400)
+
+    r = client.delete(f"/people/bob/notes/{nid}")
+    check("DELETE note 200", r.status_code == 200)
+    r = client.delete(f"/people/bob/notes/{nid}")
+    check("DELETE note 404 second time", r.status_code == 404)
+
+    client.put("/people/bob", json={"hidden": True})
+    vis = client.get("/people").json()["people"]
+    allp = client.get("/people", params={"include_hidden": "true"}).json()["people"]
+    check("hidden excluded by default", all(p["key"] != "bob" for p in vis))
+    check("hidden shown with include_hidden", any(p["key"] == "bob" for p in allp))
+
+    r = client.get("/people/zzzznobody")
+    check("GET /people/{unknown} 404", r.status_code == 404)
+
+    # --- catch-up clears an overdue flag ---
+    # Seed an old mention so the check-in is overdue against a 7-day cadence.
+    old_ts = (datetime.now() - timedelta(days=40)).isoformat()
+    entries = innerbloom_app.load_file(innerbloom_app.JOURNAL_FILE)
+    entries.append({
+        "id": "carol-old", "title": "t", "text": "Lunch with Carol.",
+        "summary": "Lunch with Carol.", "emotion": "happy", "intensity": 5,
+        "tags": [], "themes": [], "people": ["Carol"],
+        "word_count": 3, "timestamp": old_ts,
+    })
+    innerbloom_app.save_file(innerbloom_app.JOURNAL_FILE, entries)
+
+    client.put("/people/carol", json={"cadence_days": 7})
+    r = client.get("/people/carol").json()
+    check("Carol overdue before catch-up", r["overdue"] is True, str(r.get("days_since_last_seen")))
+
+    r = client.post("/people/carol/checkin")
+    check("POST /people/{key}/checkin 200", r.status_code == 200)
+    check("catch-up clears overdue", r.json()["overdue"] is False
+          and r.json()["days_since_contact"] == 0, str(r.json()))
+
+
+# =========================================================================
 # Run
 # =========================================================================
 
@@ -471,6 +547,7 @@ if __name__ == "__main__":
         test_chat_routes()
         test_insights()
         test_spotify()
+        test_people()
         test_health()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

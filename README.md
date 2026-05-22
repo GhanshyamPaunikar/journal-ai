@@ -22,7 +22,7 @@ You open a blank page and start typing — or dictate it with your voice. When y
 Then everything builds on those signals:
 
 - **Chat** with your journal. A real agent loop plans, searches your entries, and answers in your terms — citing the exact entries it pulled from. Pick a voice: Companion, Observer, or Challenger.
-- **People** cards show who actually appears in your writing — their dominant emotion around you, how often, and the last entries they show up in.
+- **People** is a personal social CRM. Names you write are auto-added; each person carries a relationship type, birthday, check-in cadence, and your own notes — merged with what your journal already knows (dominant emotion, how often, recent entries). Status chips flag who's *overdue* for a check-in or has a *birthday coming up*.
 - **Insights** run four engines over your history: **Contradictions**, **Emotional Triggers**, a **Wellbeing Radar** (Burnout + Negative Spiral levels), and **Your Story** (identity, values, tensions, becoming). They refresh in the background as you write.
 - **Memory Graph** maps entries as nodes, links the ones that share meaning, and names each cluster automatically.
 - **Music & Mood** correlates your Spotify listening with how you felt (optional, PKCE OAuth).
@@ -87,8 +87,12 @@ A background pipeline runs the engines in threads; `/insights/status` drives a p
 ### Memory graph
 `/graph` builds nodes (entries) and edges scored by an **IDF-weighted Jaccard** over shared tags/themes/emotion — so common-everywhere tags don't dominate. It runs connected components, splits any mega-cluster by its most discriminating sub-feature, and names each cluster after a term that *distinguishes* it (LLM-named, cached in `data/cluster_names.json`).
 
-### People graph
-`/people` aggregates everyone you named: mention count, first/last seen, dominant emotion around them, average intensity, co-occurring themes/tags, and recent entries to click into.
+### People (social CRM)
+Two layers that merge at read time:
+- **Derived** (recomputed from entries): mention count, first/last seen, dominant emotion, average intensity, co-occurring themes/tags, recent entries.
+- **CRM** (persisted in `data/people.json`, survives entry edits/deletes): relationship type, birthday, desired check-in cadence, manual notes, pinned/hidden state.
+
+Anyone you name in an entry is **auto-added** on save (`_upsert_people_from_entry`). The merged `/people` response also computes deterministic signals — `days_since_last_seen`, `overdue` (vs. your cadence), and `birthday_in_days` — that drive the status chips. Open a person to set their fields and keep dated notes.
 
 ### Crisis detection
 Two-stage and non-blocking. A fast regex pass catches explicit signals; ambiguous cases go to a tight LLM classifier. The reply is never withheld — a `safety` block with helplines (iCall, AASRA, 988, Samaritans, Find a Helpline) is attached alongside it.
@@ -157,7 +161,7 @@ Go to **Insights** for four cards — Contradictions, Triggers, Wellbeing, Narra
 Go to **Graph**. Drag nodes, hover for details, scroll to zoom, click a node to open the entry. Clusters are named automatically.
 
 ### People
-Go to **People** to see who shows up in your writing and the emotional shape of each relationship.
+Go to **People** to see who shows up in your writing and the emotional shape of each relationship. Click anyone to set their relationship type, birthday, and check-in cadence, and to keep running notes — overdue and birthday chips surface who to reach out to.
 
 ### Music & Mood
 Connect Spotify in **Settings**, then open **Music** for a listening snapshot (recent plays, active days, top genres), an AI reflection that reads your listening against your journal, your top tracks, and your recently played.
@@ -232,7 +236,11 @@ INNERBLOOM_MODEL=llama3.1:8b uvicorn app:app --port 5000
 | `GET` | `/analyze` | Long-term synthesis |
 | `GET` | `/stats` | Streaks, word counts, mood distribution, heatmap |
 | `GET` | `/graph` | Memory graph nodes, edges, named clusters |
-| `GET` | `/people` | Per-person relationship stats |
+| `GET` | `/people` | People list: derived stats + CRM fields + signals (`include_hidden` opt) |
+| `GET` | `/people/{key}` | One person, merged, with a longer entry timeline |
+| `PUT` | `/people/{key}` | Set CRM fields (relationship, birthday, cadence, name, pin/hide) |
+| `POST` | `/people/{key}/notes` | Add a dated note |
+| `DELETE` | `/people/{key}/notes/{note_id}` | Delete a note |
 | `GET` | `/anniversary?days=30` | Then-vs-now reflection |
 | `GET` | `/weekly-review` · `/monthly-review` | Period reflections |
 | `GET` | `/connections/{id}` | Related past entries |
@@ -262,7 +270,7 @@ INNERBLOOM_MODEL=llama3.1:8b uvicorn app:app --port 5000
 python test_app.py
 ```
 
-Runs end-to-end against FastAPI's `TestClient` with Ollama and Spotify mocked. Expected: **69 checks passing** across entry CRUD, chat, the agent loop, insight engines, search, crisis detection, stats, and Spotify.
+Runs end-to-end against FastAPI's `TestClient` with Ollama and Spotify mocked. Expected: **84 checks passing** across entry CRUD, chat, the agent loop, insight engines, search, crisis detection, stats, Spotify, and the People CRM.
 
 ---
 

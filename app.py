@@ -64,6 +64,7 @@ CHAT_FILE = os.path.join(DATA_DIR, "chat.json")
 SPOTIFY_FILE = os.path.join(DATA_DIR, "spotify.json")  # config + tokens
 INSIGHTS_FILE = os.path.join(DATA_DIR, "insights.json")  # phase-3 insight engines
 CLUSTER_NAMES_FILE = os.path.join(DATA_DIR, "cluster_names.json")  # LLM-generated cluster name cache
+PEOPLE_FILE = os.path.join(DATA_DIR, "people.json")  # social-CRM layer (persisted, merged with entry-derived stats)
 
 STOPWORDS = set("""
 a an the and or but if then so of to in on at by for with from into out up
@@ -119,6 +120,19 @@ class SpotifyExchange(BaseModel):
     code: str
     code_verifier: str
     redirect_uri: str
+
+class PersonUpdate(BaseModel):
+    # All optional — partial update. Use model_dump(exclude_unset=True) so we
+    # only touch fields the client actually sent (None means "clear it").
+    name: Optional[str] = None
+    relationship: Optional[str] = None      # friend|family|partner|mentor|colleague|other
+    birthday: Optional[str] = None          # "YYYY-MM-DD" or "MM-DD"
+    cadence_days: Optional[int] = None       # desired check-in interval
+    pinned: Optional[bool] = None
+    hidden: Optional[bool] = None
+
+class PersonNoteInput(BaseModel):
+    text: str
 
 
 # ---------------------------------------------------------------------------
@@ -1041,6 +1055,9 @@ def save_journal(data: EntryInput):
     entries.append(entry)
     save_file(JOURNAL_FILE, entries)
 
+    # Auto-create CRM records for anyone newly named in this entry.
+    _upsert_people_from_entry(entry)
+
     # Auto-refresh insights after every N new entries (in the background).
     _maybe_trigger_insight_refresh(entries_count=len(entries))
 
@@ -1109,6 +1126,8 @@ def update_entry(entry_id: str, data: EntryUpdate):
             e["updated_at"] = datetime.now().isoformat()
             entries[i] = e
             save_file(JOURNAL_FILE, entries)
+            # New names may have appeared after a re-analysis.
+            _upsert_people_from_entry(e)
             return {"status": "updated", "entry": _strip_embedding(e)}
     raise HTTPException(404, "Entry not found")
 
@@ -5294,35 +5313,129 @@ def get_graph(limit: int = 250, min_weight: float = 0.22):
 
 
 # ---------------------------------------------------------------------------
-# People — relationship graph
+# People — social CRM
 #
-# For each person mentioned in an entry, surface: mention count, dates,
-# typical journal mood on days you wrote about them, and which themes
-# co-occur. This is the relationships-side complement to the memory graph.
+# Two layers that merge at read time:
+#   - DERIVED (recomputed from entries): mention count, dates, typical journal
+#     mood on days you wrote about them, co-occurring themes. Same as before.
+#   - CRM (persisted in people.json): relationship type, birthday, desired
+#     check-in cadence, manual notes, pinned/hidden state. Survives entry
+#     edits/deletes so you never lose what you've recorded about someone.
+#
+# Names auto-create a CRM record on /save (see _upsert_people_from_entry).
+# This is the relationships-side complement to the memory graph.
 # ---------------------------------------------------------------------------
+
+RELATIONSHIP_TYPES = {"friend", "family", "partner", "mentor", "colleague", "other"}
+
 
 def _person_key(name: str) -> str:
     """Normalise so 'Mom', 'mom', 'MOM' collapse to one node."""
     return re.sub(r"[^a-z]", "", (name or "").lower())
 
 
-@app.get("/people")
-def get_people(min_mentions: int = 1, limit: int = 100):
-    """Return everyone mentioned across the journal with stats.
+def _load_people_store() -> Dict[str, dict]:
+    """The persisted CRM layer, keyed by _person_key. Always a dict."""
+    data = load_file(PEOPLE_FILE, default={})
+    return data if isinstance(data, dict) else {}
 
-    Each person carries:
-      - name (preferred form — the one the user wrote most often)
-      - mentions: count
-      - first_seen / last_seen: ISO dates
-      - top_emotion: most-common emotion across their entries
-      - avg_intensity: average intensity across their entries
-      - top_themes / top_tags: short list of co-occurring labels
-      - entries: short citation-pill list (last 8) so the UI can link in
-    """
-    entries = load_file(JOURNAL_FILE)
-    if not entries:
-        return {"people": [], "total": 0}
 
+def _save_people_store(store: Dict[str, dict]) -> None:
+    save_file(PEOPLE_FILE, store)
+
+
+def _new_person_record(key: str, name: str, now: Optional[str] = None) -> dict:
+    """A blank CRM record. Manual fields start empty; the name is a seed the
+    user can override."""
+    now = now or datetime.now().isoformat()
+    return {
+        "key": key,
+        "name": (name or key).strip()[:40],
+        "relationship": None,
+        "birthday": None,
+        "cadence_days": None,
+        "last_contact": None,   # manual "I reached out" timestamp
+        "notes": [],
+        "aliases": [],
+        "pinned": False,
+        "hidden": False,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+
+def _upsert_people_from_entry(entry: dict) -> None:
+    """Ensure every person named in an entry has a CRM record. Creates new
+    records on first mention; never overwrites manual fields. Called from
+    /save and /journal PUT so the People page auto-populates as you write."""
+    names = entry.get("people") or []
+    if not names:
+        return
+    store = _load_people_store()
+    changed = False
+    for raw in names:
+        key = _person_key(raw)
+        if not key or key in store:
+            continue
+        store[key] = _new_person_record(key, str(raw))
+        changed = True
+    if changed:
+        _save_people_store(store)
+
+
+def _birthday_in_days(birthday: Optional[str]) -> Optional[int]:
+    """Days until the next occurrence of a birthday. Accepts 'YYYY-MM-DD' or
+    'MM-DD'. Returns None if unparseable/empty."""
+    if not birthday:
+        return None
+    m = re.search(r"(?:(\d{4})-)?(\d{1,2})-(\d{1,2})", birthday.strip())
+    if not m:
+        return None
+    try:
+        month, day = int(m.group(2)), int(m.group(3))
+        today = date.today()
+        nxt = date(today.year, month, day)
+        if nxt < today:
+            nxt = date(today.year + 1, month, day)
+        return (nxt - today).days
+    except Exception:
+        return None
+
+
+def _person_crm_signals(crm: dict, last_seen: Optional[str]) -> dict:
+    """Cheap deterministic status flags for the UI chips. 'Overdue' is judged
+    against the most recent *touch* — either a journal mention or a manually
+    logged catch-up — so reaching out clears the flag even if you didn't
+    journal about it. (Phase 2 builds the full reach-out engine on top.)"""
+    out: Dict[str, Any] = {
+        "days_since_last_seen": None,   # since last journal mention
+        "days_since_contact": None,     # since manual catch-up
+        "last_contact": crm.get("last_contact"),
+        "overdue": False,
+        "birthday_in_days": None,
+    }
+    now = datetime.now()
+    seen_dt = _safe_dt(last_seen) if last_seen else None
+    if seen_dt:
+        out["days_since_last_seen"] = max(0, (now - seen_dt).days)
+    contact_dt = _safe_dt(crm.get("last_contact")) if crm.get("last_contact") else None
+    if contact_dt:
+        out["days_since_contact"] = max(0, (now - contact_dt).days)
+
+    # Effective gap = days since whichever touch is most recent.
+    candidates = [d for d in (out["days_since_last_seen"], out["days_since_contact"]) if d is not None]
+    effective = min(candidates) if candidates else None
+    cadence = crm.get("cadence_days")
+    if isinstance(cadence, int) and cadence > 0 and effective is not None:
+        out["overdue"] = effective > cadence
+    out["birthday_in_days"] = _birthday_in_days(crm.get("birthday"))
+    return out
+
+
+def _derive_people_stats(entries: List[dict]) -> Dict[str, dict]:
+    """The entry-derived layer: scan all entries and aggregate per person.
+    Returns key -> processed stats (newest-first entry list, full length —
+    callers truncate). Shared by /people and /people/{key}."""
     by_key: Dict[str, dict] = {}
     for e in entries:
         ppl = e.get("people") or []
@@ -5338,15 +5451,10 @@ def get_people(min_mentions: int = 1, limit: int = 100):
             if not key:
                 continue
             rec = by_key.setdefault(key, {
-                "names": Counter(),
-                "mentions": 0,
-                "first_seen": ts,
-                "last_seen": ts,
-                "emotions": Counter(),
-                "intensities": [],
-                "themes": Counter(),
-                "tags": Counter(),
-                "entries": [],
+                "names": Counter(), "mentions": 0,
+                "first_seen": ts, "last_seen": ts,
+                "emotions": Counter(), "intensities": [],
+                "themes": Counter(), "tags": Counter(), "entries": [],
             })
             rec["names"][raw_name] += 1
             rec["mentions"] += 1
@@ -5361,37 +5469,210 @@ def get_people(min_mentions: int = 1, limit: int = 100):
             for t in themes: rec["themes"][str(t).lower()] += 1
             for t in tags:   rec["tags"][str(t).lower()] += 1
             rec["entries"].append({
-                "id": e["id"],
-                "date": ts[:10],
-                "emotion": emo,
+                "id": e["id"], "date": ts[:10], "emotion": emo,
                 "intensity": intensity,
                 "title": e.get("title") or e.get("summary") or "",
             })
 
-    # Build the response, filter, sort by mentions desc
-    out: List[dict] = []
+    derived: Dict[str, dict] = {}
     for key, rec in by_key.items():
-        if rec["mentions"] < min_mentions:
-            continue
-        preferred = rec["names"].most_common(1)[0][0]
         avg_int = round(sum(rec["intensities"]) / len(rec["intensities"]), 2) if rec["intensities"] else None
         rec["entries"].sort(key=lambda x: x.get("date", ""), reverse=True)
-        out.append({
+        derived[key] = {
             "key": key,
-            "name": preferred,
+            "derived_name": rec["names"].most_common(1)[0][0],
             "mentions": rec["mentions"],
-            "first_seen": rec["first_seen"][:10],
-            "last_seen":  rec["last_seen"][:10],
+            "first_seen": rec["first_seen"][:10] if rec["first_seen"] else None,
+            "last_seen":  rec["last_seen"][:10] if rec["last_seen"] else None,
+            "last_seen_ts": rec["last_seen"] or None,
             "top_emotion": rec["emotions"].most_common(1)[0][0] if rec["emotions"] else None,
             "emotion_breakdown": rec["emotions"].most_common(),
             "avg_intensity": avg_int,
             "top_themes": [t for t, _ in rec["themes"].most_common(4)],
             "top_tags":   [t for t, _ in rec["tags"].most_common(4)],
-            "entries": rec["entries"][:8],
-        })
+            "entries": rec["entries"],
+        }
+    return derived
 
-    out.sort(key=lambda p: -p["mentions"])
+
+def _merge_person(key: str, derived: Optional[dict], crm: Optional[dict],
+                  entry_limit: int = 8) -> dict:
+    """Combine the derived stats and the CRM record into one public object.
+    Either side may be missing (CRM-only person, or entry-only person that
+    has no record yet)."""
+    d = derived or {}
+    c = crm or {}
+    signals = _person_crm_signals(c, d.get("last_seen_ts"))
+    return {
+        "key": key,
+        "name": (c.get("name") or d.get("derived_name") or key),
+        "mentions": d.get("mentions", 0),
+        "first_seen": d.get("first_seen"),
+        "last_seen": d.get("last_seen"),
+        "top_emotion": d.get("top_emotion"),
+        "emotion_breakdown": d.get("emotion_breakdown", []),
+        "avg_intensity": d.get("avg_intensity"),
+        "top_themes": d.get("top_themes", []),
+        "top_tags": d.get("top_tags", []),
+        "entries": (d.get("entries") or [])[:entry_limit],
+        # CRM layer
+        "relationship": c.get("relationship"),
+        "birthday": c.get("birthday"),
+        "cadence_days": c.get("cadence_days"),
+        "notes": c.get("notes", []),
+        "pinned": bool(c.get("pinned")),
+        "hidden": bool(c.get("hidden")),
+        "has_record": bool(crm),
+        # deterministic status signals for the UI chips
+        **signals,
+    }
+
+
+def _person_has_crm_data(c: Optional[dict]) -> bool:
+    """True when a CRM record holds something worth showing on its own (so a
+    notes-only person stays visible even with zero current mentions)."""
+    if not c:
+        return False
+    return bool(c.get("notes") or c.get("relationship") or c.get("birthday")
+                or c.get("cadence_days") or c.get("pinned"))
+
+
+@app.get("/people")
+def get_people(min_mentions: int = 1, limit: int = 100, include_hidden: bool = False):
+    """Everyone mentioned across the journal, merged with the CRM layer.
+
+    Each person carries derived stats (mentions, dates, dominant mood, themes,
+    recent entries) plus CRM fields (relationship, birthday, cadence, notes,
+    pinned/hidden) and deterministic signals (days_since_last_seen, overdue,
+    birthday_in_days) for the status chips.
+    """
+    entries = load_file(JOURNAL_FILE)
+    derived = _derive_people_stats(entries)
+    store = _load_people_store()
+
+    out: List[dict] = []
+    for key in (set(derived) | set(store)):
+        d = derived.get(key)
+        c = store.get(key)
+        mentions = (d or {}).get("mentions", 0)
+        # Keep if mentioned enough, OR if there's real CRM data to show.
+        if mentions < min_mentions and not _person_has_crm_data(c):
+            continue
+        person = _merge_person(key, d, c)
+        if person["hidden"] and not include_hidden:
+            continue
+        out.append(person)
+
+    # Pinned first, then most-mentioned, then alphabetical.
+    out.sort(key=lambda p: (not p["pinned"], -p["mentions"], p["name"].lower()))
     return {"people": out[:limit], "total": len(out)}
+
+
+@app.get("/people/{key}")
+def get_person(key: str):
+    """One person, merged. Includes a longer entry timeline for the detail view."""
+    key = _person_key(key)
+    if not key:
+        raise HTTPException(400, "Invalid person key")
+    derived = _derive_people_stats(load_file(JOURNAL_FILE))
+    crm = _load_people_store().get(key)
+    if key not in derived and not crm:
+        raise HTTPException(404, "Person not found")
+    return _merge_person(key, derived.get(key), crm, entry_limit=50)
+
+
+@app.put("/people/{key}")
+def update_person(key: str, data: PersonUpdate):
+    """Set CRM fields on a person (partial update). Creates the record if it
+    doesn't exist yet — e.g. adding someone you've only chatted about."""
+    key = _person_key(key)
+    if not key:
+        raise HTTPException(400, "Invalid person key")
+    store = _load_people_store()
+    rec = store.get(key) or _new_person_record(key, key)
+
+    fields = data.model_dump(exclude_unset=True)
+    if "relationship" in fields:
+        rel = fields["relationship"]
+        if rel is not None and rel not in RELATIONSHIP_TYPES:
+            raise HTTPException(400, f"relationship must be one of {sorted(RELATIONSHIP_TYPES)}")
+        rec["relationship"] = rel
+    if "name" in fields:
+        rec["name"] = (fields["name"] or "").strip()[:40] or rec.get("name") or key
+    if "birthday" in fields:
+        bd = (fields["birthday"] or "").strip() or None
+        if bd is not None and _birthday_in_days(bd) is None:
+            raise HTTPException(400, "birthday must be 'YYYY-MM-DD' or 'MM-DD'")
+        rec["birthday"] = bd
+    if "cadence_days" in fields:
+        cd = fields["cadence_days"]
+        rec["cadence_days"] = int(cd) if isinstance(cd, int) and cd > 0 else None
+    if "pinned" in fields:
+        rec["pinned"] = bool(fields["pinned"])
+    if "hidden" in fields:
+        rec["hidden"] = bool(fields["hidden"])
+    rec["updated_at"] = datetime.now().isoformat()
+    store[key] = rec
+    _save_people_store(store)
+
+    derived = _derive_people_stats(load_file(JOURNAL_FILE))
+    return _merge_person(key, derived.get(key), rec, entry_limit=50)
+
+
+@app.post("/people/{key}/notes")
+def add_person_note(key: str, data: PersonNoteInput):
+    """Append a dated manual note to a person's timeline."""
+    key = _person_key(key)
+    text = (data.text or "").strip()
+    if not key:
+        raise HTTPException(400, "Invalid person key")
+    if not text:
+        raise HTTPException(400, "Note is empty")
+    store = _load_people_store()
+    rec = store.get(key) or _new_person_record(key, key)
+    note = {"id": str(uuid.uuid4()), "text": text[:2000],
+            "created_at": datetime.now().isoformat()}
+    rec.setdefault("notes", []).append(note)
+    rec["updated_at"] = note["created_at"]
+    store[key] = rec
+    _save_people_store(store)
+    return {"status": "added", "note": note}
+
+
+@app.delete("/people/{key}/notes/{note_id}")
+def delete_person_note(key: str, note_id: str):
+    key = _person_key(key)
+    store = _load_people_store()
+    rec = store.get(key)
+    if not rec:
+        raise HTTPException(404, "Person not found")
+    notes = rec.get("notes", [])
+    kept = [n for n in notes if n.get("id") != note_id]
+    if len(kept) == len(notes):
+        raise HTTPException(404, "Note not found")
+    rec["notes"] = kept
+    rec["updated_at"] = datetime.now().isoformat()
+    store[key] = rec
+    _save_people_store(store)
+    return {"status": "deleted"}
+
+
+@app.post("/people/{key}/checkin")
+def log_person_checkin(key: str):
+    """Record that you reached out today — resets the overdue clock even when
+    you didn't write a journal entry about it. Creates the record if needed."""
+    key = _person_key(key)
+    if not key:
+        raise HTTPException(400, "Invalid person key")
+    store = _load_people_store()
+    rec = store.get(key) or _new_person_record(key, key)
+    now = datetime.now().isoformat()
+    rec["last_contact"] = now
+    rec["updated_at"] = now
+    store[key] = rec
+    _save_people_store(store)
+    derived = _derive_people_stats(load_file(JOURNAL_FILE))
+    return _merge_person(key, derived.get(key), rec, entry_limit=50)
 
 
 # ---------------------------------------------------------------------------

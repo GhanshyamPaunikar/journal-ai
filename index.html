@@ -1043,6 +1043,53 @@ body {
 .person-emo-pct { color: var(--text-muted); font-variant-numeric: tabular-nums; text-align: right; }
 .person-tags { display: flex; gap: 5px; flex-wrap: wrap; }
 .person-entries { display: flex; gap: 5px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+.person-card { cursor: pointer; }
+
+/* People CRM: status chips + detail drawer */
+.person-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.person-chip {
+  font-size: 10.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); color: var(--text-muted); background: var(--bg-1);
+  text-transform: capitalize;
+}
+.person-chip.rel      { background: var(--accent-soft); color: var(--accent-deep); border-color: rgba(79,124,90,0.22); }
+.person-chip.overdue  { background: rgba(196,65,58,0.10);  color: var(--danger);  border-color: rgba(196,65,58,0.28); }
+.person-chip.bday     { background: rgba(196,126,42,0.12); color: var(--warning); border-color: rgba(196,126,42,0.30); }
+.person-chip.pin      { background: rgba(217,122,91,0.12); color: var(--warm);    border-color: rgba(217,122,91,0.30); }
+
+.pm-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .pm-grid { grid-template-columns: 1fr; } }
+.pm-field { display: flex; flex-direction: column; gap: 5px; }
+.pm-field label { font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-dim); font-weight: 700; }
+.pm-note-row {
+  display: flex; gap: 10px; align-items: flex-start;
+  padding: 10px 12px; background: var(--bg-2); border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 6px;
+}
+.pm-note-body { flex: 1; min-width: 0; }
+.pm-note-text { font-size: 13px; color: var(--text); line-height: 1.5; white-space: pre-wrap; }
+.pm-note-date { font-size: 10.5px; color: var(--text-dim); margin-top: 3px; }
+.pm-note-del {
+  background: none; border: none; color: var(--text-dim); cursor: pointer;
+  font-size: 15px; line-height: 1; padding: 2px 4px; flex-shrink: 0;
+}
+.pm-note-del:hover { color: var(--danger); }
+.pm-note-empty { font-size: 12.5px; color: var(--text-muted); font-style: italic; padding: 6px 0; }
+.pm-add-row { display: flex; gap: 8px; margin-top: 8px; }
+.pm-add-row .input { flex: 1; }
+.cadence-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.cadence-chip {
+  font-size: 12px; font-weight: 500; padding: 6px 13px; border-radius: 999px;
+  border: 1.5px solid var(--border); background: var(--bg-1); color: var(--text-muted);
+  cursor: pointer; transition: all 0.15s ease;
+}
+.cadence-chip:hover { border-color: var(--border-strong); color: var(--text); }
+.cadence-chip.active {
+  background: var(--accent-soft); color: var(--accent-deep);
+  border-color: rgba(79,124,90,0.35); font-weight: 600;
+}
+.pm-contact-line { font-size: 12px; color: var(--text-muted); margin-top: 10px; }
 
 /* === Music: simple hour-of-day bar chart === */
 .hour-bars {
@@ -1919,6 +1966,13 @@ a.crisis-number svg { flex-shrink: 0; color: #dc2626; opacity: 0.7; }
 </div>
 
 <!-- =========================================================================
+     PERSON DETAIL MODAL — social CRM, opens from a person card
+     ========================================================================= -->
+<div class="modal-backdrop" id="person-modal">
+  <div class="modal" id="person-modal-inner" role="dialog" aria-modal="true" aria-label="Person detail"></div>
+</div>
+
+<!-- =========================================================================
      MONTH-AGO MODAL — opens from the .anniv-pill on the Write view
      ========================================================================= -->
 <div class="modal-backdrop" id="anniv-modal-backdrop">
@@ -2424,6 +2478,14 @@ document.addEventListener("keydown", (ev) => {
   if (ev.key === "Escape" && $("anniv-modal-backdrop")?.classList.contains("active")) {
     closeAnnivModal();
   }
+});
+
+// Person CRM drawer: dismiss on backdrop click + Escape.
+$("person-modal")?.addEventListener("click", (ev) => {
+  if (ev.target === $("person-modal")) closePersonModal();
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key === "Escape" && $("person-modal")?.classList.contains("active")) closePersonModal();
 });
 
 // Voice input (Web Speech API)
@@ -4374,7 +4436,7 @@ async function loadPeople() {
       return;
     }
 
-    const maxMentions = Math.max(...people.map(p => p.mentions));
+    const maxMentions = Math.max(1, ...people.map(p => p.mentions));
     const cards = people.map(p => {
       const emoColor = `var(--e-${p.top_emotion || "neutral"})`;
       const tags = (p.top_tags || []).slice(0, 4)
@@ -4402,22 +4464,25 @@ async function loadPeople() {
 
       const sizeRatio = p.mentions / maxMentions;
       const avatarScale = 0.7 + sizeRatio * 0.5;
+      const chips = peopleChips(p);
+      const metaBits = [];
+      if (p.mentions) metaBits.push(`<b>${p.mentions}</b> ${p.mentions === 1 ? "mention" : "mentions"}`);
+      if (p.avg_intensity != null) metaBits.push(`avg ${p.avg_intensity}/10`);
+      if (p.first_seen && p.last_seen) metaBits.push(`${p.first_seen} → ${p.last_seen}`);
+      if (!metaBits.length) metaBits.push("no mentions yet");
       return `
-        <div class="person-card">
+        <div class="person-card" data-key="${escapeHtml(p.key)}">
           <div class="person-head">
             <div class="person-avatar" style="transform:scale(${avatarScale.toFixed(2)});background:linear-gradient(135deg, ${emoColor}, ${emoColor});">
               ${escapeHtml((p.name || "?").charAt(0).toUpperCase())}
             </div>
             <div class="person-info">
               <div class="person-name">${escapeHtml(p.name)}</div>
-              <div class="person-meta">
-                <b>${p.mentions}</b> ${p.mentions === 1 ? "mention" : "mentions"}
-                ${p.avg_intensity != null ? ` · avg ${p.avg_intensity}/10` : ""}
-                · ${p.first_seen} → ${p.last_seen}
-              </div>
+              <div class="person-meta">${metaBits.join(" · ")}</div>
             </div>
           </div>
-          <div class="person-emo-list">${emoBars}</div>
+          ${chips ? `<div class="person-chips">${chips}</div>` : ""}
+          ${emoBars ? `<div class="person-emo-list">${emoBars}</div>` : ""}
           ${(tags + themes) ? `<div class="person-tags">${themes}${tags}</div>` : ""}
           ${entryPills ? `<div class="person-entries">${entryPills}</div>` : ""}
         </div>`;
@@ -4425,14 +4490,20 @@ async function loadPeople() {
 
     host.innerHTML = `
       <div class="people-header">
-        ${people.length} ${people.length === 1 ? "person" : "people"} appear across your entries.
-        Their faces are coloured by their dominant emotion in your writing.
+        ${people.length} ${people.length === 1 ? "person" : "people"} in your circle.
+        Click anyone to add a relationship, birthday, check-in cadence, and notes.
+        Faces are coloured by their dominant emotion in your writing.
       </div>
       <div class="people-grid">${cards}</div>`;
 
-    // Wire entry pills to open the entry
+    // Click a card → open the CRM detail drawer.
+    host.querySelectorAll(".person-card[data-key]").forEach(card => {
+      card.addEventListener("click", () => openPersonModal(card.getAttribute("data-key")));
+    });
+    // Entry pills open the entry (and shouldn't also open the person drawer).
     host.querySelectorAll(".cite-pill[data-id]").forEach(el => {
-      el.addEventListener("click", async () => {
+      el.addEventListener("click", async (ev) => {
+        ev.stopPropagation();
         const id = el.getAttribute("data-id");
         try { const e = await api(`/journal/${id}`); openEntry(e); } catch {}
       });
@@ -4440,6 +4511,210 @@ async function loadPeople() {
   } catch (e) {
     host.innerHTML = `<div class="empty"><h3>Couldn't load</h3><p>${escapeHtml(e.message)}</p></div>`;
   }
+}
+
+// Status chips shown on a person card and in the detail header.
+function peopleChips(p) {
+  const chips = [];
+  if (p.pinned) chips.push(`<span class="person-chip pin">pinned</span>`);
+  if (p.relationship) chips.push(`<span class="person-chip rel">${escapeHtml(p.relationship)}</span>`);
+  if (p.overdue) {
+    const d = p.days_since_last_seen != null ? ` · ${p.days_since_last_seen}d` : "";
+    chips.push(`<span class="person-chip overdue">overdue${d}</span>`);
+  }
+  if (p.birthday_in_days != null && p.birthday_in_days <= 30) {
+    const when = p.birthday_in_days === 0 ? "today" : `in ${p.birthday_in_days}d`;
+    chips.push(`<span class="person-chip bday">birthday ${when}</span>`);
+  }
+  return chips.join("");
+}
+
+const RELATIONSHIP_OPTIONS = ["", "friend", "family", "partner", "mentor", "colleague", "other"];
+
+const CADENCE_PRESETS = [
+  { label: "Off", days: null },
+  { label: "Weekly", days: 7 },
+  { label: "Every 2 weeks", days: 14 },
+  { label: "Monthly", days: 30 },
+  { label: "Quarterly", days: 90 },
+];
+
+// One-line status under the cadence chips: when you last reached out + whether
+// a check-in is due. Reflects journal mentions and manual catch-ups together.
+function peopleContactLine(p) {
+  const bits = [];
+  if (p.last_contact) bits.push(`Last reached out ${fmtNoteDate(p.last_contact)}`);
+  else if (p.days_since_last_seen != null) bits.push(`Last wrote about them ${p.days_since_last_seen}d ago`);
+  if (p.cadence_days) {
+    bits.push(p.overdue ? `<b style="color:var(--danger);">check-in overdue</b>` : `on track`);
+  }
+  return bits.join(" · ");
+}
+
+function closePersonModal() { $("person-modal").classList.remove("active"); }
+
+async function openPersonModal(key) {
+  const back = $("person-modal");
+  const host = $("person-modal-inner");
+  back.classList.add("active");
+  host.innerHTML = `<div class="empty"><h3>Loading…</h3></div>`;
+  let p;
+  try { p = await api(`/people/${encodeURIComponent(key)}`); }
+  catch (e) { host.innerHTML = `<div class="empty"><h3>Couldn't load</h3><p>${escapeHtml(e.message)}</p></div>`; return; }
+
+  const emoColor = `var(--e-${p.top_emotion || "neutral"})`;
+  const relOpts = RELATIONSHIP_OPTIONS.map(o =>
+    `<option value="${o}"${(p.relationship || "") === o ? " selected" : ""}>${o ? o[0].toUpperCase() + o.slice(1) : "—"}</option>`).join("");
+  const notes = (p.notes || []).slice().reverse();
+  const notesHtml = notes.length
+    ? notes.map(n => `
+        <div class="pm-note-row" data-note="${n.id}">
+          <div class="pm-note-body">
+            <div class="pm-note-text">${escapeHtml(n.text)}</div>
+            <div class="pm-note-date">${fmtNoteDate(n.created_at)}</div>
+          </div>
+          <button class="pm-note-del" data-del="${n.id}" title="Delete note">×</button>
+        </div>`).join("")
+    : `<div class="pm-note-empty">No notes yet — jot down context, things to remember, follow-ups.</div>`;
+
+  const entryPills = (p.entries || []).slice(0, 12).map(e => `
+    <span class="cite-pill" data-id="${e.id}" title="${escapeHtml(e.title || "")}">
+      <span class="dot" style="background:var(--e-${e.emotion || "neutral"});"></span>${escapeHtml(e.date)}
+    </span>`).join("");
+
+  host.innerHTML = `
+    <div class="modal-head">
+      <div style="display:flex;gap:14px;align-items:center;">
+        <div class="person-avatar" style="background:linear-gradient(135deg, ${emoColor}, ${emoColor});">
+          ${escapeHtml((p.name || "?").charAt(0).toUpperCase())}
+        </div>
+        <div>
+          <h2 style="margin:0;">${escapeHtml(p.name)}</h2>
+          <div class="meta">
+            ${p.mentions ? `${p.mentions} ${p.mentions === 1 ? "mention" : "mentions"}` : "no mentions yet"}
+            ${p.avg_intensity != null ? ` · avg ${p.avg_intensity}/10` : ""}
+            ${p.days_since_last_seen != null ? ` · last ${p.days_since_last_seen}d ago` : ""}
+          </div>
+          ${peopleChips(p) ? `<div class="person-chips" style="margin-top:8px;">${peopleChips(p)}</div>` : ""}
+        </div>
+      </div>
+      <button class="btn btn-ghost" id="person-modal-close" aria-label="close">✕</button>
+    </div>
+
+    <div class="section-label">Relationship</div>
+    <div class="pm-grid">
+      <div class="pm-field">
+        <label>Type</label>
+        <select class="select" id="pm-relationship">${relOpts}</select>
+      </div>
+      <div class="pm-field">
+        <label>Display name</label>
+        <input class="input" id="pm-name" value="${escapeHtml(p.name || "")}" maxlength="40">
+      </div>
+      <div class="pm-field">
+        <label>Birthday (YYYY-MM-DD or MM-DD)</label>
+        <input class="input" id="pm-birthday" value="${escapeHtml(p.birthday || "")}" placeholder="03-12">
+      </div>
+    </div>
+
+    <div class="pm-field" style="margin-top:12px;">
+      <label>How often do you want to check in?</label>
+      <div class="cadence-chips" id="pm-cadence">
+        ${CADENCE_PRESETS.map(c => `<button type="button" class="cadence-chip${(p.cadence_days ?? null) === c.days ? " active" : ""}" data-days="${c.days == null ? "" : c.days}">${c.label}</button>`).join("")}
+      </div>
+      <div class="pm-contact-line" id="pm-contact-line">${peopleContactLine(p)}</div>
+    </div>
+
+    <div class="section-label">Notes</div>
+    <div id="pm-notes">${notesHtml}</div>
+    <div class="pm-add-row">
+      <input class="input" id="pm-note-input" placeholder="Add a note…" maxlength="2000">
+      <button class="btn" id="pm-note-add">Add</button>
+    </div>
+
+    ${entryPills ? `<div class="section-label">Appears in</div><div class="person-entries" style="border:0;padding:0;">${entryPills}</div>` : ""}
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="pm-pin">${p.pinned ? "Unpin" : "Pin"}</button>
+      <button class="btn btn-ghost" id="pm-hide">${p.hidden ? "Unhide" : "Hide"}</button>
+      <button class="btn" id="pm-checkin">I reached out</button>
+      <button class="btn btn-primary" id="pm-save">Save</button>
+    </div>`;
+
+  // --- wire controls ---
+  $("person-modal-close").addEventListener("click", closePersonModal);
+
+  const savePerson = async (extra = {}) => {
+    const activeChip = host.querySelector(".cadence-chip.active");
+    const cadence = activeChip && activeChip.dataset.days ? parseInt(activeChip.dataset.days, 10) : null;
+    const body = {
+      relationship: $("pm-relationship").value || null,
+      name: $("pm-name").value.trim() || null,
+      birthday: $("pm-birthday").value.trim() || null,
+      cadence_days: cadence,
+      ...extra,
+    };
+    try {
+      await api(`/people/${encodeURIComponent(p.key)}`, { method: "PUT", body: JSON.stringify(body) });
+      toast("Saved");
+      await openPersonModal(p.key);   // refresh drawer
+      loadPeople();                    // refresh grid behind it
+    } catch (e) { toast(e.message || "Couldn't save", "error"); }
+  };
+
+  // Cadence chips: single-select (clicking one activates it, clears siblings).
+  host.querySelectorAll(".cadence-chip").forEach(chip => {
+    chip.addEventListener("click", () => {
+      host.querySelectorAll(".cadence-chip").forEach(c => c.classList.remove("active"));
+      chip.classList.add("active");
+    });
+  });
+
+  $("pm-save").addEventListener("click", () => savePerson());
+  $("pm-pin").addEventListener("click", () => savePerson({ pinned: !p.pinned }));
+  $("pm-hide").addEventListener("click", () => savePerson({ hidden: !p.hidden }));
+  $("pm-checkin").addEventListener("click", async () => {
+    try {
+      await api(`/people/${encodeURIComponent(p.key)}/checkin`, { method: "POST" });
+      toast("Nice — marked as caught up");
+      await openPersonModal(p.key);
+      loadPeople();
+    } catch (e) { toast(e.message || "Couldn't log catch-up", "error"); }
+  });
+
+  const addNote = async () => {
+    const text = $("pm-note-input").value.trim();
+    if (!text) return;
+    try {
+      await api(`/people/${encodeURIComponent(p.key)}/notes`, { method: "POST", body: JSON.stringify({ text }) });
+      await openPersonModal(p.key);
+    } catch (e) { toast(e.message || "Couldn't add note", "error"); }
+  };
+  $("pm-note-add").addEventListener("click", addNote);
+  $("pm-note-input").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addNote(); } });
+
+  host.querySelectorAll(".pm-note-del[data-del]").forEach(btn => {
+    btn.addEventListener("click", async () => {
+      const nid = btn.getAttribute("data-del");
+      try {
+        await api(`/people/${encodeURIComponent(p.key)}/notes/${nid}`, { method: "DELETE" });
+        await openPersonModal(p.key);
+      } catch (e) { toast(e.message || "Couldn't delete", "error"); }
+    });
+  });
+
+  host.querySelectorAll(".cite-pill[data-id]").forEach(el => {
+    el.addEventListener("click", async () => {
+      const id = el.getAttribute("data-id");
+      try { const e = await api(`/journal/${id}`); closePersonModal(); openEntry(e); } catch {}
+    });
+  });
+}
+
+function fmtNoteDate(iso) {
+  if (!iso) return "";
+  try { return new Date(iso).toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" }); }
+  catch { return iso.slice(0, 10); }
 }
 
 // =========================================================================

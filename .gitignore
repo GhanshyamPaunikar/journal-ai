@@ -14,6 +14,7 @@ data/chat.json
 data/insights.json
 data/spotify.json
 data/cluster_names.json
+data/people.json
 data/*.tmp
 
 # Personal sample-journal generator — kept local, not published
