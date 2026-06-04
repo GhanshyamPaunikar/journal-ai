@@ -5,7 +5,7 @@ Runs end-to-end against FastAPI's TestClient with Ollama + Spotify mocked.
 Every route is exercised; stats/retrieval are validated with known data.
 """
 
-import os, sys, json, tempfile, shutil, time
+import os, sys, json, tempfile, shutil, time, threading
 from datetime import datetime, timedelta
 from unittest.mock import patch, MagicMock
 
@@ -535,6 +535,28 @@ def test_people():
           and r.json()["days_since_contact"] == 0, str(r.json()))
 
 
+def test_insight_write_concurrency():
+    section("Insight cache concurrency")
+    # The four engines write insights.json concurrently from refresh-all.
+    # _update_insight must serialise the read-modify-write so no key is lost.
+    innerbloom_app.save_file(innerbloom_app.INSIGHTS_FILE, {})
+    keys = [f"engine_{i}" for i in range(12)]
+
+    def writer(k):
+        # tiny stagger maximises interleave odds
+        time.sleep(0.001)
+        innerbloom_app._update_insight(k, {"ok": True, "k": k})
+
+    threads = [threading.Thread(target=writer, args=(k,)) for k in keys]
+    for t in threads: t.start()
+    for t in threads: t.join()
+
+    cache = innerbloom_app._load_insights()
+    missing = [k for k in keys if k not in cache]
+    check("concurrent _update_insight loses no keys", not missing,
+          f"missing: {missing}")
+
+
 # =========================================================================
 # Run
 # =========================================================================
@@ -548,6 +570,7 @@ if __name__ == "__main__":
         test_insights()
         test_spotify()
         test_people()
+        test_insight_write_concurrency()
         test_health()
     finally:
         shutil.rmtree(TMP, ignore_errors=True)

@@ -184,12 +184,13 @@ def _safe_dt(s):
 # "Find contradictions" manually — by the time they next look, it's done.
 # ---------------------------------------------------------------------------
 
-INSIGHT_STATUS: Dict[str, str] = {
-    "contradictions": "idle",
-    "triggers":       "idle",
-    "wellbeing":      "idle",
-    "narrative":      "idle",
-}
+# The four user-facing insight engines. Other background jobs (e.g. cluster
+# naming) also flow through _run_insight_in_background and land in
+# INSIGHT_STATUS, but the /insights/status progress strip only reports these
+# four so viewing the memory graph doesn't show an "insights catching up" badge.
+INSIGHT_ENGINE_KINDS = ("contradictions", "triggers", "wellbeing", "narrative")
+
+INSIGHT_STATUS: Dict[str, str] = {k: "idle" for k in INSIGHT_ENGINE_KINDS}
 INSIGHT_STATUS_LOCK = threading.Lock()
 INSIGHT_LAST_RUN: Dict[str, Optional[str]] = {
     k: None for k in INSIGHT_STATUS
@@ -521,7 +522,12 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
 # Memory tuning knobs. Pulled out so both retrievers can read them and so a
 # future user-config endpoint can adjust without touching call sites.
 RECENCY_HALF_LIFE_DAYS = 30.0   # cosine score is multiplied by 0.5^(age/HL)
-RECENCY_FLOOR = 0.55            # never decay below this (old but relevant > recent fluff)
+# Recency is a gentle tiebreaker, not a ranking force. At 0.55 a perfect old
+# match (e.g. "my first day at the gym") lost to broad recent entries — the
+# most-recent entry would top unrelated queries. 0.85 keeps a mild recent
+# nudge while letting semantic relevance win. (The chat path also seeds the
+# N most-recent entries separately, so presence-of-recent is already covered.)
+RECENCY_FLOOR = 0.85            # never decay below this (old but relevant > recent fluff)
 MMR_LAMBDA = 0.7                # 1.0 = pure relevance, 0.0 = pure diversity
 
 
@@ -624,8 +630,12 @@ def _chat_embed_text(turn: dict) -> str:
     return f"{turn.get('user','')}\n{turn.get('ai','')}".strip()
 
 
-# Backfill budgets — capped per call so cold-starts don't hang.
-BACKFILL_BUDGET_PER_CALL = 12
+# Backfill budgets — capped per call so cold-starts don't hang. Embedding is
+# cheap (~60ms/entry on mxbai-embed-large; 16 entries embed in ~1s), so the
+# old cap of 12 was needlessly conservative — it left a freshly seeded or
+# re-embedded journal at partial memory strength for several chat turns. 32
+# reaches full coverage in ~1-2 turns with negligible added latency.
+BACKFILL_BUDGET_PER_CALL = 32
 
 # Semantic chunking. Entries longer than this get split into paragraph-
 # sized chunks, each embedded individually. Retrieval max-pools over a
@@ -3658,6 +3668,22 @@ def _save_insights(data: dict):
     save_file(INSIGHTS_FILE, data)
 
 
+# The four insight engines run concurrently (see /insights/refresh-all, which
+# launches a daemon thread per engine). Each one does a read-modify-write on
+# the shared insights.json — without serialising that, two engines finishing
+# at once would clobber each other's keys (lost update). This lock makes the
+# merge atomic.
+INSIGHTS_FILE_LOCK = threading.Lock()
+
+
+def _update_insight(key: str, value: dict) -> None:
+    """Atomically merge one engine's result into the shared insights cache."""
+    with INSIGHTS_FILE_LOCK:
+        cache = _load_insights()
+        cache[key] = value
+        _save_insights(cache)
+
+
 def _entries_for_window(days: int) -> List[dict]:
     """Return journal entries from the last N days, sorted oldest-first."""
     entries = load_file(JOURNAL_FILE)
@@ -4051,9 +4077,7 @@ Schema (JSON only, no prose, no fences):
             f"Re-running this scan after a few more entries usually surfaces "
             f"something."
         )
-    cache = _load_insights()
-    cache["contradictions"] = result
-    _save_insights(cache)
+    _update_insight("contradictions", result)
     return result
 
 
@@ -4321,9 +4345,7 @@ Schema (JSON exactly, no fences):
         "entry_count": len(entries),
         "baseline_mood": round(sum(_mood_score(e) for e in entries) / len(entries), 2),
     }
-    cache = _load_insights()
-    cache["triggers"] = result
-    _save_insights(cache)
+    _update_insight("triggers", result)
     return result
 
 
@@ -4577,9 +4599,7 @@ def compute_wellbeing(window_days: int = 14) -> dict:
         "generated_at": datetime.now().isoformat(),
         "window_days": window_days,
     }
-    cache = _load_insights()
-    cache["wellbeing"] = result
-    _save_insights(cache)
+    _update_insight("wellbeing", result)
     return result
 
 
@@ -4706,9 +4726,7 @@ Entries:
         "window_days": window_days,
         "entry_count": len(entries),
     }
-    cache = _load_insights()
-    cache["narrative"] = result
-    _save_insights(cache)
+    _update_insight("narrative", result)
     return result
 
 
@@ -4746,14 +4764,17 @@ def get_insights_status():
     with INSIGHT_STATUS_LOCK:
         statuses = dict(INSIGHT_STATUS)
         last_runs = dict(INSIGHT_LAST_RUN)
-    running = sum(1 for v in statuses.values() if v in ("queued", "running"))
+    # Only report the four user-facing engines — background jobs like cluster
+    # naming share INSIGHT_STATUS but shouldn't show in the progress strip.
+    kinds = [k for k in INSIGHT_ENGINE_KINDS if k in statuses]
+    running = sum(1 for k in kinds if statuses[k] in ("queued", "running"))
     return {
         "engines": [
             {"kind": k, "status": statuses[k], "last_run": last_runs.get(k)}
-            for k in statuses
+            for k in kinds
         ],
         "running_count": running,
-        "total": len(statuses),
+        "total": len(kinds),
         "any_running": running > 0,
     }
 
